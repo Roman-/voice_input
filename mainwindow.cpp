@@ -15,9 +15,10 @@
 #include <QDir>
 #include <QApplication>
 
-MainWindow::MainWindow(bool sendToOpenAI, QWidget *parent)
+MainWindow::MainWindow(bool sendToOpenAI, qint64 forceStopAfterMs, QWidget *parent)
     : QMainWindow(parent),
-      m_sendToOpenAI(sendToOpenAI)
+      m_sendToOpenAI(sendToOpenAI),
+      m_forceStopAfterMs(forceStopAfterMs)
 {
     // Clean up previous files at startup
     QFile::remove(Config::RECORDING_PATH);
@@ -25,6 +26,17 @@ MainWindow::MainWindow(bool sendToOpenAI, QWidget *parent)
     
     initUi();
     initAudioInputForVolume();
+
+    // Configure auto-stop timer if needed
+    if (m_forceStopAfterMs > 0) {
+        connect(&m_autoStopTimer, &QTimer::timeout, this, [this]() {
+            // When the timer expires, stop recording and send to transcription if requested
+            if (m_isRecording) {
+                qDebug() << "Auto-stopping recording after" << (m_forceStopAfterMs / 1000) << "seconds";
+                stopRecording(m_sendToOpenAI);
+            }
+        });
+    }
 
     // Start ffmpeg recording when the UI is ready
     // For minimal perceived lag, we show the window first, then start.
@@ -157,10 +169,22 @@ void MainWindow::startRecording()
     m_isRecording = true;
     m_recordStartTime = QDateTime::currentSecsSinceEpoch();
     
-    if (m_sendToOpenAI) {
-        m_statusLabel->setText("Recording... Press Send to transcribe or Stop to discard.");
+    // Start auto-stop timer if configured
+    if (m_forceStopAfterMs > 0) {
+        QString statusText = QString("Auto-stopping after %1 seconds. ").arg(m_forceStopAfterMs / 1000);
+        m_statusLabel->setText(statusText + 
+                               (m_sendToOpenAI ? "Will transcribe when done." : "Will save when done."));
+        
+        // Single-shot timer to auto-stop recording
+        m_autoStopTimer.setSingleShot(true);
+        m_autoStopTimer.start(m_forceStopAfterMs);
     } else {
-        m_statusLabel->setText("Recording... Press Stop to save (will not transcribe).");
+        // Normal recording message
+        if (m_sendToOpenAI) {
+            m_statusLabel->setText("Recording... Press Send to transcribe or Stop to discard.");
+        } else {
+            m_statusLabel->setText("Recording... Press Stop to save (will not transcribe).");
+        }
     }
 
     connect(&m_ffmpegProcess, 
@@ -174,11 +198,12 @@ void MainWindow::stopRecording(bool sendToSTT)
         return;
     }
 
-    // First, stop volume metering to prevent race conditions
+    // First, stop timers to prevent race conditions
     if (m_audioInput) {
         m_audioInput->stop();
     }
     m_volumeTimer.stop();
+    m_autoStopTimer.stop(); // Stop the auto-stop timer if it's running
 
     // Stop the ffmpeg process
     if (m_ffmpegProcess.state() == QProcess::Running) {

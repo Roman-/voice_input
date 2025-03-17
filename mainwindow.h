@@ -21,7 +21,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    MainWindow(bool sendToOpenAI = false, QWidget *parent = nullptr);
+    MainWindow(bool sendToOpenAI = false, qint64 forceStopAfterMs = 0, QWidget *parent = nullptr);
     ~MainWindow();
 
 protected:
@@ -65,6 +65,10 @@ private:
     bool        m_retryUsed = false;
     bool        m_sendRequested = false;
     bool        m_sendToOpenAI = false;
+    
+    // Auto-stop after specified milliseconds (0 = disabled)
+    qint64      m_forceStopAfterMs = 0;
+    QTimer      m_autoStopTimer;
 
     void initUi();
     void initAudioInputForVolume();
