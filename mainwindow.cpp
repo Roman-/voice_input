@@ -57,9 +57,9 @@ void MainWindow::initUi()
     m_retryButton = new QPushButton(tr("Submit Again"), this);
     m_retryButton->hide(); // only show if there's an error on first attempt
     
-    // Set yellow background for initialization state
+    // Set black background for initialization state
     QPalette pal = central->palette();
-    pal.setColor(QPalette::Window, QColor(255, 255, 190)); // Light yellow
+    pal.setColor(QPalette::Window, QColor(0, 0, 0)); // Black
     central->setAutoFillBackground(true);
     central->setPalette(pal);
 
@@ -394,7 +394,7 @@ void MainWindow::setYellowBackground(bool yellow)
     if (central) {
         QPalette pal = central->palette();
         if (yellow) {
-            pal.setColor(QPalette::Window, QColor(255, 255, 190)); // Light yellow
+            pal.setColor(QPalette::Window, QColor(0, 0, 0)); // Black
         } else {
             pal.setColor(QPalette::Window, QApplication::palette().color(QPalette::Window)); // Default
         }
