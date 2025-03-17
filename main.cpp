@@ -7,11 +7,7 @@
 
 static void cleanupOldFiles()
 {
-    // Remove leftover files from previous sessions (old paths for backwards compatibility)
-    QFile::remove("/tmp/voice_input.m4a");
-    QFile::remove("/tmp/voice_input.txt");
-    
-    // Remove current path files too
+    // Remove current path files
     QFile::remove(Config::RECORDING_PATH);
     QFile::remove(Config::TRANSCRIPTION_PATH);
 }

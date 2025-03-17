@@ -18,10 +18,15 @@ cd ..
 
 # 2. Run the headless test for auto-stop functionality
 
+# Get the paths from config.h
+STT_RECORDING_PATH=$(grep -oP 'RECORDING_PATH\s*=\s*"\K[^"]+' config.h)
+STT_TRANSCRIPTION_PATH=$(grep -oP 'TRANSCRIPTION_PATH\s*=\s*"\K[^"]+' config.h)
+
 # Clean up before testing
 echo "Cleaning temporary files..."
-rm -f /tmp/stt-recording.m4a
-rm -f /tmp/stt-transcription.txt
+echo "Using paths from config.h: $STT_RECORDING_PATH, $STT_TRANSCRIPTION_PATH"
+rm -f "$STT_RECORDING_PATH"
+rm -f "$STT_TRANSCRIPTION_PATH"
 
 # Run the dedicated test executable
 echo "Running auto-stop test..."
@@ -29,12 +34,12 @@ timeout 5s ./build_test/test_auto_stop
 
 # 3. Verify file exists after test
 echo "Verifying test results..."
-if [ ! -f "/tmp/stt-recording.m4a" ]; then
-    echo "ERROR: Test did not create the audio file"
+if [ ! -f "$STT_RECORDING_PATH" ]; then
+    echo "ERROR: Test did not create the audio file at $STT_RECORDING_PATH"
     exit 1
 fi
 
-FILE_SIZE=$(stat -c%s "/tmp/stt-recording.m4a")
+FILE_SIZE=$(stat -c%s "$STT_RECORDING_PATH")
 if [ "$FILE_SIZE" -eq 0 ]; then
     echo "ERROR: Test file is empty"
     exit 1
@@ -43,7 +48,7 @@ echo "Auto-stop test file size: $FILE_SIZE bytes"
 
 # 4. Test manual cleanup
 echo "Testing cleanup functionality..."
-rm -f /tmp/stt-recording.m4a
+rm -f "$STT_RECORDING_PATH"
 
 # 5. Test success message
 echo "PASSED: Test completed successfully"
