@@ -34,6 +34,12 @@ target_link_libraries(${PROJECT_NAME}
     Qt5::Network
 )
 
+# Test executable for auto-stop functionality
+add_executable(test_auto_stop test_auto_stop.cpp)
+target_link_libraries(test_auto_stop
+    Qt5::Core
+)
+
 # If you have UI .ui files, use:
 # set(UI_FILES mainwindow.ui)
 # qt5_wrap_ui(UI_HEADERS ${UI_FILES})

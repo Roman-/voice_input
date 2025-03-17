@@ -34,6 +34,9 @@ MainWindow::MainWindow(bool sendToOpenAI, qint64 forceStopAfterMs, QWidget *pare
             if (m_isRecording) {
                 qDebug() << "Auto-stopping recording after" << (m_forceStopAfterMs / 1000) << "seconds";
                 stopRecording(m_sendToOpenAI);
+                
+                // No special case handling needed - the app will exit naturally
+                // after stopRecording completes its normal workflow
             }
         });
     }
@@ -229,8 +232,9 @@ void MainWindow::stopRecording(bool sendToSTT)
         // Show the file path in status bar
         m_statusLabel->setText("Recording saved to: " + Config::RECORDING_PATH);
         
-        // If no transcription requested/allowed, exit after a delay
-        if (!sendToSTT || !m_sendToOpenAI) {
+        // Always exit after a delay if we're using auto-stop or if no transcription is requested
+        // This ensures automated tests can complete and normal operation works consistently
+        if (m_forceStopAfterMs > 0 || !sendToSTT || !m_sendToOpenAI) {
             QTimer::singleShot(Config::EXIT_DELAY_MS, qApp, &QCoreApplication::quit);
         }
     }
@@ -369,6 +373,14 @@ void MainWindow::onTranscriptionError(const QString &errorMsg)
     // Set background back to normal after error
     setYellowBackground(false);
     
+    // If auto-stop is enabled, we should exit regardless of retry status
+    if (m_forceStopAfterMs > 0) {
+        showError(QString("Transcription failed: %1. Exiting...").arg(errorMsg));
+        QTimer::singleShot(Config::EXIT_DELAY_MS, qApp, &QCoreApplication::quit);
+        return;
+    }
+    
+    // Normal interactive mode - allow retry once
     if (!m_retryUsed) {
         // Offer a retry
         m_retryButton->show();

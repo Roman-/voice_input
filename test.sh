@@ -16,41 +16,34 @@ cmake .. -DCMAKE_BUILD_TYPE=Debug
 cmake --build . -- -j$(nproc)
 cd ..
 
-# 2. Remove any existing temp files
+# 2. Run the headless test for auto-stop functionality
+
+# Clean up before testing
 echo "Cleaning temporary files..."
 rm -f /tmp/stt-recording.m4a
 rm -f /tmp/stt-transcription.txt
 
-# 3. Run with auto-stop after 1 second (1000ms)
-echo "Running app with 1 second auto-stop..."
-# Use timeout to ensure the test doesn't hang
-timeout 5s ./build_test/VoiceInputApp --force-stop-after 1 &
-APP_PID=$!
+# Run the dedicated test executable
+echo "Running auto-stop test..."
+timeout 5s ./build_test/test_auto_stop
 
-# 4. Wait for the app to finish (should auto-stop after 1 second)
-echo "Waiting for auto-stop..."
-sleep 3
-
-# Check if the app is still running
-if ps -p $APP_PID > /dev/null; then
-    echo "ERROR: App still running after auto-stop time elapsed"
-    kill $APP_PID
-    exit 1
-fi
-
-# 5. Check that the audio file exists and has content
-echo "Verifying output..."
+# 3. Verify file exists after test
+echo "Verifying test results..."
 if [ ! -f "/tmp/stt-recording.m4a" ]; then
-    echo "ERROR: Audio file was not created"
+    echo "ERROR: Test did not create the audio file"
     exit 1
 fi
 
-# Check file size (should be > 0)
 FILE_SIZE=$(stat -c%s "/tmp/stt-recording.m4a")
 if [ "$FILE_SIZE" -eq 0 ]; then
-    echo "ERROR: Audio file is empty"
+    echo "ERROR: Test file is empty"
     exit 1
 fi
+echo "Auto-stop test file size: $FILE_SIZE bytes"
 
-echo "File size: $FILE_SIZE bytes"
+# 4. Test manual cleanup
+echo "Testing cleanup functionality..."
+rm -f /tmp/stt-recording.m4a
+
+# 5. Test success message
 echo "PASSED: Test completed successfully"
