@@ -321,7 +321,17 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
             m_ffmpegProcess.kill();
             m_ffmpegProcess.waitForFinished();
         }
-        qApp->quit();
+        
+        // Properly clean up audio resources before quitting
+        if (m_audioInput) {
+            m_audioInput->stop();
+            if (m_audioDevice) {
+                m_audioDevice->close();
+            }
+        }
+        
+        // Use a very short delay to allow cleanup to complete
+        QTimer::singleShot(10, qApp, &QCoreApplication::quit);
     } else if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
         // "Send" hotkey
         stopRecording(true);
