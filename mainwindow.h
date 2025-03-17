@@ -19,7 +19,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    MainWindow(QWidget *parent = nullptr);
+    MainWindow(bool sendToOpenAI = false, QWidget *parent = nullptr);
     ~MainWindow();
 
 protected:
@@ -63,6 +63,8 @@ private:
     // Transcription
     bool        m_retryUsed = false;
     bool        m_sendRequested = false;
+    bool        m_sendToOpenAI = false;
+    QString     m_outputFilePath;
 
     void initUi();
     void initAudioInputForVolume();
