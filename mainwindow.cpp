@@ -121,10 +121,11 @@ void MainWindow::startRecording()
 
     // Create a unique output file path using timestamp
     QString docsPath = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-    QDir().mkpath(docsPath + "/voice_input"); // Create the directory if it doesn't exist
+    QString voiceInputDir = docsPath + "/voice_input";
+    QDir().mkpath(voiceInputDir); // Create the directory if it doesn't exist
     
     QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss");
-    m_outputFilePath = QString("%1/voice_input/recording_%2.m4a").arg(docsPath).arg(timestamp);
+    m_outputFilePath = QString("%1/recording_%2.m4a").arg(voiceInputDir).arg(timestamp);
     
     // Store a copy in tmp for possible OpenAI transcription
     QString tmpPath = "/tmp/voice_input.m4a";
