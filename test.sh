@@ -1,7 +1,12 @@
 #!/bin/bash
 set -e  # Exit immediately if a command exits with a non-zero status
 
+# Change to the directory where the script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
+
 echo "=== Testing Voice Input Application ==="
+echo "Working directory: $(pwd)"
 
 # 1. Build the project
 echo "Building project..."
