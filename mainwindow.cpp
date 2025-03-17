@@ -19,6 +19,10 @@ MainWindow::MainWindow(bool sendToOpenAI, QWidget *parent)
     : QMainWindow(parent),
       m_sendToOpenAI(sendToOpenAI)
 {
+    // Clean up previous files at startup
+    QFile::remove("/tmp/stt-recording.m4a");
+    QFile::remove("/tmp/stt-transcription.txt");
+    
     initUi();
     initAudioInputForVolume();
 
@@ -129,16 +133,8 @@ void MainWindow::startRecording()
     // Change background to normal when recording
     setYellowBackground(false);
 
-    // Create a unique output file path using timestamp
-    QString docsPath = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-    QString voiceInputDir = docsPath + "/voice_input";
-    QDir().mkpath(voiceInputDir); // Create the directory if it doesn't exist
-    
-    QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss");
-    m_outputFilePath = QString("%1/recording_%2.m4a").arg(voiceInputDir).arg(timestamp);
-    
-    // Store a copy in tmp for possible OpenAI transcription
-    QString tmpPath = "/tmp/voice_input.m4a";
+    // Use fixed path in /tmp
+    QString recordingPath = "/tmp/stt-recording.m4a";
     
     // Build ffmpeg command
     // -y = overwrite output
@@ -151,7 +147,7 @@ void MainWindow::startRecording()
               << "-i" << "default"
               << "-acodec" << "aac"
               << "-b:a" << "128k"
-              << tmpPath;
+              << recordingPath;
 
     // Start the process
     m_ffmpegProcess.start(program, arguments);
@@ -190,26 +186,18 @@ void MainWindow::stopRecording(bool sendToSTT)
     }
     m_isRecording = false;
     
-    // Copy the file from tmp to the final destination
-    QFile::copy("/tmp/voice_input.m4a", m_outputFilePath);
-    
-    // Check if the file exists and output the path
-    QFile outputFile(m_outputFilePath);
-    if (outputFile.exists()) {
-        qDebug() << "Recording saved to:" << m_outputFilePath;
-    } else {
-        qDebug() << "ERROR: Failed to save recording to:" << m_outputFilePath;
-    }
+    // File path is already at /tmp/stt-recording.m4a
+    qDebug() << "Recording saved to: /tmp/stt-recording.m4a";
 
     if (sendToSTT && m_sendToOpenAI) {
         m_statusLabel->setText("Uploading to OpenAI Whisper...");
         m_sendRequested = true;
-        // Set yellow background while waiting for OpenAI
+        // Set black background while waiting for OpenAI
         setYellowBackground(true);
         sendForTranscription();
     } else {
-        // Always show the saved file path in status bar
-        m_statusLabel->setText(QString("Recording saved to: %1").arg(m_outputFilePath));
+        // Show the file path in status bar
+        m_statusLabel->setText("Recording saved to: /tmp/stt-recording.m4a");
         
         // If no transcription requested/allowed, exit after a delay
         if (!sendToSTT || !m_sendToOpenAI) {
@@ -232,7 +220,7 @@ void MainWindow::updateRecordingStats()
     if (!m_isRecording) return;
 
     // Check file size
-    QFile file("/tmp/voice_input.m4a");
+    QFile file("/tmp/stt-recording.m4a");
     if (file.exists()) {
         m_currentFileSize = file.size();
         if (m_currentFileSize >= MAX_FILE_SIZE_BYTES) {
@@ -283,7 +271,7 @@ void MainWindow::updateVolumeLevel()
 void MainWindow::sendForTranscription()
 {
     // If file is missing or empty, just error out
-    QFileInfo fi("/tmp/voice_input.m4a");
+    QFileInfo fi("/tmp/stt-recording.m4a");
     if (!fi.exists() || fi.size() == 0) {
         showError("Recorded file missing or empty. Cannot transcribe.");
         return;
@@ -310,7 +298,7 @@ void MainWindow::sendForTranscription()
     api->setLanguage("en");
 
     // Perform the transcription
-    api->transcribe("/tmp/voice_input.m4a");
+    api->transcribe("/tmp/stt-recording.m4a");
 }
 
 void MainWindow::onTranscriptionSuccess(const QString &text)
@@ -318,35 +306,18 @@ void MainWindow::onTranscriptionSuccess(const QString &text)
     // Set background back to normal after getting response
     setYellowBackground(false);
     
-    // Get directory path from m_outputFilePath
-    QFileInfo fileInfo(m_outputFilePath);
-    QString dir = fileInfo.absolutePath();
-    QString baseName = fileInfo.baseName();
-    
-    // Save transcription next to the recording
-    QString transcriptionPath = QString("%1/%2.txt").arg(dir).arg(baseName);
+    // Save transcription to fixed path
+    QString transcriptionPath = "/tmp/stt-transcription.txt";
     QFile outFile(transcriptionPath);
     if (outFile.open(QFile::WriteOnly | QFile::Truncate)) {
         outFile.write(text.toUtf8());
         outFile.close();
-    }
-    
-    // Also save to /tmp for compatibility
-    QFile tmpFile("/tmp/voice_input.txt");
-    if (tmpFile.open(QFile::WriteOnly | QFile::Truncate)) {
-        tmpFile.write(text.toUtf8());
-        tmpFile.close();
-    }
-
-    // Check if transcription file exists and output the path
-    QFile transFile(transcriptionPath);
-    if (transFile.exists()) {
         qDebug() << "Transcription saved to:" << transcriptionPath;
     } else {
         qDebug() << "ERROR: Failed to save transcription to:" << transcriptionPath;
     }
 
-    m_statusLabel->setText(QString("Transcription success. Saved to: %1").arg(transcriptionPath));
+    m_statusLabel->setText("Transcription success. Saved to: /tmp/stt-transcription.txt");
     // Optionally, place text on clipboard:
     // QApplication::clipboard()->setText(text);
 

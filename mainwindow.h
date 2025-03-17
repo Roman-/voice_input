@@ -64,7 +64,6 @@ private:
     bool        m_retryUsed = false;
     bool        m_sendRequested = false;
     bool        m_sendToOpenAI = false;
-    QString     m_outputFilePath;
 
     void initUi();
     void initAudioInputForVolume();

@@ -38,7 +38,7 @@ void WhisperApi::transcribe(const QString &filePath)
     // File part
     QHttpPart filePart;
     filePart.setHeader(QNetworkRequest::ContentDispositionHeader,
-                       QVariant(QString("form-data; name=\"file\"; filename=\"voice_input.m4a\"")));
+                       QVariant(QString("form-data; name=\"file\"; filename=\"stt-recording.m4a\"")));
     filePart.setHeader(QNetworkRequest::ContentTypeHeader, QVariant("audio/m4a"));
     filePart.setBodyDevice(file);
 
