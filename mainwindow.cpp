@@ -13,6 +13,7 @@
 #include <QDateTime>
 #include <QStandardPaths>
 #include <QDir>
+#include <QApplication>
 
 MainWindow::MainWindow(bool sendToOpenAI, QWidget *parent)
     : QMainWindow(parent),
@@ -55,6 +56,12 @@ void MainWindow::initUi()
     m_stopButton  = new QPushButton(tr("Stop"), this);
     m_retryButton = new QPushButton(tr("Submit Again"), this);
     m_retryButton->hide(); // only show if there's an error on first attempt
+    
+    // Set yellow background for initialization state
+    QPalette pal = central->palette();
+    pal.setColor(QPalette::Window, QColor(255, 255, 190)); // Light yellow
+    central->setAutoFillBackground(true);
+    central->setPalette(pal);
 
     // Connect signals
     connect(m_sendButton, &QPushButton::clicked, [=](){
@@ -118,6 +125,9 @@ void MainWindow::startRecording()
 {
     if (m_isRecording)
         return;
+    
+    // Change background to normal when recording
+    setYellowBackground(false);
 
     // Create a unique output file path using timestamp
     QString docsPath = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
@@ -194,6 +204,8 @@ void MainWindow::stopRecording(bool sendToSTT)
     if (sendToSTT && m_sendToOpenAI) {
         m_statusLabel->setText("Uploading to OpenAI Whisper...");
         m_sendRequested = true;
+        // Set yellow background while waiting for OpenAI
+        setYellowBackground(true);
         sendForTranscription();
     } else {
         // Always show the saved file path in status bar
@@ -303,6 +315,9 @@ void MainWindow::sendForTranscription()
 
 void MainWindow::onTranscriptionSuccess(const QString &text)
 {
+    // Set background back to normal after getting response
+    setYellowBackground(false);
+    
     // Get directory path from m_outputFilePath
     QFileInfo fileInfo(m_outputFilePath);
     QString dir = fileInfo.absolutePath();
@@ -341,6 +356,9 @@ void MainWindow::onTranscriptionSuccess(const QString &text)
 
 void MainWindow::onTranscriptionError(const QString &errorMsg)
 {
+    // Set background back to normal after error
+    setYellowBackground(false);
+    
     if (!m_retryUsed) {
         // Offer a retry
         m_retryButton->show();
@@ -359,6 +377,8 @@ void MainWindow::retryTranscription()
     m_retryUsed = true;
     m_retryButton->hide();
     m_statusLabel->setText("Retrying transcription...");
+    // Set yellow background while waiting for OpenAI
+    setYellowBackground(true);
     sendForTranscription();
 }
 
@@ -366,6 +386,20 @@ void MainWindow::showError(const QString &message)
 {
     m_statusLabel->setText(message);
     qWarning() << message; // log to stderr
+}
+
+void MainWindow::setYellowBackground(bool yellow)
+{
+    QWidget *central = centralWidget();
+    if (central) {
+        QPalette pal = central->palette();
+        if (yellow) {
+            pal.setColor(QPalette::Window, QColor(255, 255, 190)); // Light yellow
+        } else {
+            pal.setColor(QPalette::Window, QApplication::palette().color(QPalette::Window)); // Default
+        }
+        central->setPalette(pal);
+    }
 }
 
 void MainWindow::keyPressEvent(QKeyEvent *event)

@@ -6,6 +6,7 @@
 # build
 [Bb]uild
 cmake-build-*/
+build_*/
 
 # tmp files
 *~

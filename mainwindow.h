@@ -69,6 +69,7 @@ private:
     void initUi();
     void initAudioInputForVolume();
     void showError(const QString &message);
+    void setYellowBackground(bool yellow); // Helper to set/reset background color
 };
 
 #endif // MAINWINDOW_H
