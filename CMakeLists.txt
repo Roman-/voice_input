@@ -5,16 +5,25 @@ project(VoiceInputApp LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Include Cmake's automoc processing
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+set(CMAKE_AUTOUIC ON)
+
 # Find Qt components
 find_package(Qt5 5.15 REQUIRED COMPONENTS Core Gui Widgets Multimedia Network)
 
-# Create an executable from our source files
-add_executable(${PROJECT_NAME}
+# Source files
+set(SOURCES
     main.cpp
     mainwindow.cpp
+    mainwindow.h
     whisperapi.cpp
-    # You can add more .cpp files if needed
+    whisperapi.h
 )
+
+# Create an executable from our source files
+add_executable(${PROJECT_NAME} ${SOURCES})
 
 # Link Qt libraries
 target_link_libraries(${PROJECT_NAME}
