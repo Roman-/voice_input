@@ -177,12 +177,20 @@ void MainWindow::stopRecording(bool sendToSTT)
         return;
     }
 
+    // First, stop volume metering to prevent race conditions
+    if (m_audioInput) {
+        m_audioInput->stop();
+    }
+    m_volumeTimer.stop();
+
     // Stop the ffmpeg process
-    m_ffmpegProcess.terminate();
-    // Give it a moment to shutdown gracefully
-    if (!m_ffmpegProcess.waitForFinished(2000)) {
-        m_ffmpegProcess.kill();
-        m_ffmpegProcess.waitForFinished();
+    if (m_ffmpegProcess.state() == QProcess::Running) {
+        m_ffmpegProcess.terminate();
+        // Give it a moment to shutdown gracefully
+        if (!m_ffmpegProcess.waitForFinished(2000)) {
+            m_ffmpegProcess.kill();
+            m_ffmpegProcess.waitForFinished();
+        }
     }
     m_isRecording = false;
     
@@ -243,12 +251,19 @@ void MainWindow::updateRecordingStats()
 
 void MainWindow::updateVolumeLevel()
 {
-    if (!m_audioDevice || !m_audioInput) return;
+    if (!m_isRecording || !m_audioDevice || !m_audioInput) return;
 
     // We can read some data from m_audioDevice to get an approximate level
-    QByteArray buffer = m_audioDevice->readAll();
-    if (buffer.isEmpty())
+    QByteArray buffer;
+    
+    try {
+        buffer = m_audioDevice->readAll();
+        if (buffer.isEmpty())
+            return;
+    } catch (...) {
+        qWarning() << "Error reading audio device buffer";
         return;
+    }
 
     // Compute a naive peak from the buffer
     const qint16 *samples = reinterpret_cast<const qint16*>(buffer.constData());
@@ -265,7 +280,9 @@ void MainWindow::updateVolumeLevel()
     // Convert peak to a 0-100 range
     // Max 16-bit is 32767, so scale accordingly
     int level = static_cast<int>(100.0 * double(peak) / 32767.0);
-    m_volumeBar->setValue(level);
+    if (m_volumeBar) {
+        m_volumeBar->setValue(level);
+    }
 }
 
 void MainWindow::sendForTranscription()
@@ -377,6 +394,9 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
 {
     if (event->key() == Qt::Key_Escape) {
         // Immediately cancel and quit
+        m_updateTimer.stop();
+        m_volumeTimer.stop();
+        
         if (m_ffmpegProcess.state() == QProcess::Running) {
             m_ffmpegProcess.kill();
             m_ffmpegProcess.waitForFinished();
@@ -393,8 +413,10 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
         // Use a very short delay to allow cleanup to complete
         QTimer::singleShot(10, qApp, &QCoreApplication::quit);
     } else if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
-        // "Send" hotkey
-        stopRecording(true);
+        // "Send" hotkey - only if recording is active
+        if (m_isRecording) {
+            stopRecording(true);
+        }
     } else {
         QMainWindow::keyPressEvent(event);
     }
