@@ -1,4 +1,5 @@
 #include "whisperapi.h"
+#include "config.h"
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -38,7 +39,8 @@ void WhisperApi::transcribe(const QString &filePath)
     // File part
     QHttpPart filePart;
     filePart.setHeader(QNetworkRequest::ContentDispositionHeader,
-                       QVariant(QString("form-data; name=\"file\"; filename=\"stt-recording.m4a\"")));
+                       QVariant(QString("form-data; name=\"file\"; filename=\"%1\"")
+                               .arg(QFileInfo(Config::RECORDING_PATH).fileName())));
     filePart.setHeader(QNetworkRequest::ContentTypeHeader, QVariant("audio/m4a"));
     filePart.setBodyDevice(file);
 

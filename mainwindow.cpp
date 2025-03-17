@@ -20,8 +20,8 @@ MainWindow::MainWindow(bool sendToOpenAI, QWidget *parent)
       m_sendToOpenAI(sendToOpenAI)
 {
     // Clean up previous files at startup
-    QFile::remove("/tmp/stt-recording.m4a");
-    QFile::remove("/tmp/stt-transcription.txt");
+    QFile::remove(Config::RECORDING_PATH);
+    QFile::remove(Config::TRANSCRIPTION_PATH);
     
     initUi();
     initAudioInputForVolume();
@@ -87,15 +87,15 @@ void MainWindow::initUi()
 
     setCentralWidget(central);
     setWindowTitle(tr("Voice Input Application (Qt)"));
-    resize(400, 200);
+    resize(Config::UI_WIDTH, Config::UI_HEIGHT);
 
     // Timer to update recording stats (file size, duration)
     connect(&m_updateTimer, &QTimer::timeout, this, &MainWindow::updateRecordingStats);
-    m_updateTimer.start(500);
+    m_updateTimer.start(Config::UI_UPDATE_INTERVAL_MS);
 
     // Timer to update volume level
     connect(&m_volumeTimer, &QTimer::timeout, this, &MainWindow::updateVolumeLevel);
-    m_volumeTimer.start(200);
+    m_volumeTimer.start(Config::VOLUME_UPDATE_INTERVAL_MS);
 }
 
 void MainWindow::initAudioInputForVolume()
@@ -132,9 +132,6 @@ void MainWindow::startRecording()
     
     // Change background to normal when recording
     setYellowBackground(false);
-
-    // Use fixed path in /tmp
-    QString recordingPath = "/tmp/stt-recording.m4a";
     
     // Build ffmpeg command
     // -y = overwrite output
@@ -145,9 +142,9 @@ void MainWindow::startRecording()
     arguments << "-y"
               << "-f" << "pulse"
               << "-i" << "default"
-              << "-acodec" << "aac"
-              << "-b:a" << "128k"
-              << recordingPath;
+              << "-acodec" << Config::AUDIO_FORMAT
+              << "-b:a" << Config::AUDIO_BITRATE
+              << Config::RECORDING_PATH;
 
     // Start the process
     m_ffmpegProcess.start(program, arguments);
@@ -194,8 +191,8 @@ void MainWindow::stopRecording(bool sendToSTT)
     }
     m_isRecording = false;
     
-    // File path is already at /tmp/stt-recording.m4a
-    qDebug() << "Recording saved to: /tmp/stt-recording.m4a";
+    // Log the recording path
+    qDebug() << "Recording saved to:" << Config::RECORDING_PATH;
 
     if (sendToSTT && m_sendToOpenAI) {
         m_statusLabel->setText("Uploading to OpenAI Whisper...");
@@ -205,11 +202,11 @@ void MainWindow::stopRecording(bool sendToSTT)
         sendForTranscription();
     } else {
         // Show the file path in status bar
-        m_statusLabel->setText("Recording saved to: /tmp/stt-recording.m4a");
+        m_statusLabel->setText("Recording saved to: " + Config::RECORDING_PATH);
         
         // If no transcription requested/allowed, exit after a delay
         if (!sendToSTT || !m_sendToOpenAI) {
-            QTimer::singleShot(2000, qApp, &QCoreApplication::quit);
+            QTimer::singleShot(Config::EXIT_DELAY_MS, qApp, &QCoreApplication::quit);
         }
     }
 }
@@ -228,13 +225,14 @@ void MainWindow::updateRecordingStats()
     if (!m_isRecording) return;
 
     // Check file size
-    QFile file("/tmp/stt-recording.m4a");
+    QFile file(Config::RECORDING_PATH);
     if (file.exists()) {
         m_currentFileSize = file.size();
-        if (m_currentFileSize >= MAX_FILE_SIZE_BYTES) {
+        if (m_currentFileSize >= Config::MAX_FILE_SIZE_BYTES) {
             // Stop the recording and show error
             stopRecording(false); // do not send
-            showError("Max file size (35 MB) reached. Transcription canceled.");
+            showError(QString("Max file size (%1 MB) reached. Transcription canceled.")
+                       .arg(Config::MAX_FILE_SIZE_BYTES / (1024 * 1024)));
             return;
         }
     }
@@ -288,7 +286,7 @@ void MainWindow::updateVolumeLevel()
 void MainWindow::sendForTranscription()
 {
     // If file is missing or empty, just error out
-    QFileInfo fi("/tmp/stt-recording.m4a");
+    QFileInfo fi(Config::RECORDING_PATH);
     if (!fi.exists() || fi.size() == 0) {
         showError("Recorded file missing or empty. Cannot transcribe.");
         return;
@@ -310,12 +308,12 @@ void MainWindow::sendForTranscription()
 
     // We set up the request parameters
     api->setApiKey(QString::fromUtf8(apiKey));
-    api->setModel("whisper-1");
-    api->setTemperature(0.1);
-    api->setLanguage("en");
+    api->setModel(Config::WHISPER_MODEL);
+    api->setTemperature(Config::WHISPER_TEMPERATURE);
+    api->setLanguage(Config::WHISPER_LANGUAGE);
 
     // Perform the transcription
-    api->transcribe("/tmp/stt-recording.m4a");
+    api->transcribe(Config::RECORDING_PATH);
 }
 
 void MainWindow::onTranscriptionSuccess(const QString &text)
@@ -324,22 +322,21 @@ void MainWindow::onTranscriptionSuccess(const QString &text)
     setYellowBackground(false);
     
     // Save transcription to fixed path
-    QString transcriptionPath = "/tmp/stt-transcription.txt";
-    QFile outFile(transcriptionPath);
+    QFile outFile(Config::TRANSCRIPTION_PATH);
     if (outFile.open(QFile::WriteOnly | QFile::Truncate)) {
         outFile.write(text.toUtf8());
         outFile.close();
-        qDebug() << "Transcription saved to:" << transcriptionPath;
+        qDebug() << "Transcription saved to:" << Config::TRANSCRIPTION_PATH;
     } else {
-        qDebug() << "ERROR: Failed to save transcription to:" << transcriptionPath;
+        qDebug() << "ERROR: Failed to save transcription to:" << Config::TRANSCRIPTION_PATH;
     }
 
-    m_statusLabel->setText("Transcription success. Saved to: /tmp/stt-transcription.txt");
+    m_statusLabel->setText("Transcription success. Saved to: " + Config::TRANSCRIPTION_PATH);
     // Optionally, place text on clipboard:
     // QApplication::clipboard()->setText(text);
 
     // Exit after a short delay
-    QTimer::singleShot(2000, qApp, &QCoreApplication::quit);
+    QTimer::singleShot(Config::EXIT_DELAY_MS, qApp, &QCoreApplication::quit);
 }
 
 void MainWindow::onTranscriptionError(const QString &errorMsg)
@@ -354,7 +351,7 @@ void MainWindow::onTranscriptionError(const QString &errorMsg)
     } else {
         // Already retried once
         showError(QString("Transcription failed again: %1. Exiting...").arg(errorMsg));
-        QTimer::singleShot(2000, qApp, &QCoreApplication::quit);
+        QTimer::singleShot(Config::EXIT_DELAY_MS, qApp, &QCoreApplication::quit);
     }
 }
 

@@ -14,6 +14,8 @@
 #include <QProgressBar>
 #include <QLineEdit>
 
+#include "config.h"
+
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -53,7 +55,6 @@ private:
     qint64      m_recordStartTime = 0;
     qint64      m_currentFileSize = 0;
     QTimer      m_updateTimer; // updates file size & volume
-    const qint64 MAX_FILE_SIZE_BYTES = 35 * 1024 * 1024; // 35 MB
 
     // Volume measurement
     QAudioInput *m_audioInput = nullptr;
