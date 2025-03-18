@@ -28,6 +28,14 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     QPalette pal = palette();
     pal.setColor(QPalette::Window, QColor(255, 230, 200));
     setPalette(pal);
+    
+    // Set normal background after a short delay
+    QTimer::singleShot(3000, this, [this]() {
+        QPalette pal = palette();
+        pal.setColor(QPalette::Window, QColor(Qt::white));
+        setPalette(pal);
+        m_statusLabel->setText("Ready to record...");
+    });
 
     // Connect signals from recorder
     connect(m_recorder, &AudioRecorder::volumeChanged, this, &MainWindow::onVolumeChanged);
@@ -45,11 +53,23 @@ void MainWindow::updateUI()
 
     qint64 size = m_recorder->fileSize();
     qint64 elapsed = m_recorder->elapsedMs();
-
-    QString infoText = QString("Recording... Elapsed: %1 ms | File size: %2 bytes")
-            .arg(elapsed)
-            .arg(size);
-    m_statusLabel->setText(infoText);
+    
+    // Only update recording info after we have some data (indicates initialization is complete)
+    if (size > 0) {
+        QString infoText = QString("Recording... Elapsed: %1 ms | File size: %2 bytes")
+                .arg(elapsed)
+                .arg(size);
+        m_statusLabel->setText(infoText);
+        
+        // If this is the first data we're seeing, change background to normal
+        static bool firstData = true;
+        if (firstData) {
+            firstData = false;
+            QPalette pal = palette();
+            pal.setColor(QPalette::Window, QColor(Qt::white));
+            setPalette(pal);
+        }
+    }
 }
 
 void MainWindow::onVolumeChanged(float volume)

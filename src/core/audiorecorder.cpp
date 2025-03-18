@@ -23,24 +23,28 @@ bool AudioRecorder::startRecording()
 {
     qInfo() << "[INFO] startRecording() called";
 
-    if (!initializePortAudio()) {
-        qCritical() << "[ERROR] Failed to initialize PortAudio";
-        return false;
-    }
-
+    // Prepare output file immediately
     m_outputFile.setFileName(OUTPUT_FILE_PATH);
     if (!m_outputFile.open(QIODevice::WriteOnly)) {
         qCritical() << "[ERROR] Unable to open output file for writing:" << OUTPUT_FILE_PATH;
         return false;
     }
 
-    // (Here you'd initialize your AAC encoder with libfdk-aac or similar)
-    // For now, we'll just pretend we directly write raw data for demonstration.
-
     // Start the timer
     m_elapsedTimer.start();
     m_isRecording = true;
-    qInfo() << "[INFO] Recording started:" << OUTPUT_FILE_PATH;
+    
+    // Initialize PortAudio asynchronously
+    m_initFuture = QtConcurrent::run([this]() {
+        if (!initializePortAudio()) {
+            qCritical() << "[ERROR] Failed to initialize PortAudio";
+            m_isRecording = false;
+            m_outputFile.close();
+            return;
+        }
+        qInfo() << "[INFO] Recording started:" << OUTPUT_FILE_PATH;
+    });
+    
     return true;
 }
 
@@ -51,6 +55,11 @@ void AudioRecorder::stopRecording()
 
     qInfo() << "[DEBUG] stopRecording() called";
     m_isRecording = false;
+    
+    // Wait for initialization to complete if it's still running
+    if (m_initFuture.isRunning()) {
+        m_initFuture.waitForFinished();
+    }
 
     // Stop PortAudio stream
     if (m_stream) {
@@ -149,7 +158,7 @@ int AudioRecorder::audioCallback( const void *inputBuffer,
 void AudioRecorder::handleAudioData(const void* inputBuffer, unsigned long frames)
 {
     QMutexLocker locker(&m_dataMutex);
-    if (!m_isRecording || !inputBuffer) {
+    if (!m_isRecording || !inputBuffer || !m_stream) {
         return;
     }
 

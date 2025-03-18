@@ -5,6 +5,8 @@
 #include <QFile>
 #include <QElapsedTimer>
 #include <QMutex>
+#include <QFuture>
+#include <QtConcurrent>
 #include <portaudio.h>
 
 class AudioRecorder : public QObject
@@ -46,6 +48,7 @@ private:
     QMutex          m_dataMutex;
     bool            m_isRecording;
     float           m_currentVolume;
+    QFuture<void>   m_initFuture;
 };
 
 #endif // AUDIORECORDER_H

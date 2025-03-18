@@ -4,7 +4,7 @@ project(AudioRecorder)
 set(CMAKE_CXX_STANDARD 17)
 
 # Find Qt5 (adjust if you have Qt6)
-find_package(Qt5 COMPONENTS Core Widgets Test REQUIRED)
+find_package(Qt5 COMPONENTS Core Widgets Test Concurrent REQUIRED)
 
 # Find PortAudio and libfdk-aac
 find_package(PkgConfig REQUIRED)
@@ -36,6 +36,7 @@ add_executable(audio_recorder ${SOURCES})
 target_link_libraries(audio_recorder
     Qt5::Core
     Qt5::Widgets
+    Qt5::Concurrent
     ${PORTAUDIO_LIBRARIES}
     ${FDK_AAC_LIBRARIES}
 )
@@ -49,6 +50,7 @@ add_executable(test_runner
 target_link_libraries(test_runner
     Qt5::Core
     Qt5::Test
+    Qt5::Concurrent
     ${PORTAUDIO_LIBRARIES}
     ${FDK_AAC_LIBRARIES}
 )
