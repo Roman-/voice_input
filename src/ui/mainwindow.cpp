@@ -22,8 +22,8 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     auto central = new QWidget(this);
     auto layout = new QVBoxLayout(central);
 
-    m_statusLabel->setText("Initializing Audio Recorder...");
-    m_volumeLabel->setText("Volume: 0.0");
+    m_statusLabel->setText("Starting...");
+    m_volumeLabel->setText("Preparing to record...");
     
     // Create volume meter
     m_volumeBar = new QWidget(this);
@@ -48,25 +48,26 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     m_statusLabel->setPalette(pal);
     m_volumeLabel->setPalette(pal);
     
-    // Set status text style to be bold and larger
-    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt;");
+    // Set status text style to be bold and larger with distinctive color
+    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #003366;");
     
-    // Set normal background after a short delay
-    QTimer::singleShot(3000, this, [this]() {
+    // Only keep yellow background very briefly - just to show the app is responsive
+    QTimer::singleShot(500, this, [this]() {
         QPalette pal = palette();
-        pal.setColor(QPalette::Window, QColor(240, 240, 240));  // Light gray, more standard
+        pal.setColor(QPalette::Window, QColor(240, 240, 240));  // Light gray, standard background
         pal.setColor(QPalette::WindowText, QColor(0, 0, 0));    // Black text
         pal.setColor(QPalette::Text, QColor(0, 0, 0));          // Black text for widgets
         
         setPalette(pal);
         m_statusLabel->setPalette(pal);
         m_volumeLabel->setPalette(pal);
-        m_statusLabel->setText("Ready to record...");
+        m_statusLabel->setText("Initializing audio...");
     });
 
     // Connect signals from recorder
     connect(m_recorder, &AudioRecorder::volumeChanged, this, &MainWindow::onVolumeChanged);
     connect(m_recorder, &AudioRecorder::recordingStopped, this, &MainWindow::onRecordingStopped);
+    connect(m_recorder, &AudioRecorder::recordingStarted, this, &MainWindow::onRecordingStarted);
 
     // Periodically update UI for elapsed time and file size
     m_updateTimer.setInterval(500); // 0.5 seconds
@@ -97,16 +98,8 @@ void MainWindow::updateUI()
                 .arg(sizeKB);
         m_statusLabel->setText(infoText);
         
-        // If this is the first data we're seeing, change background to show active recording
-        static bool firstData = true;
-        if (firstData) {
-            firstData = false;
-            QPalette pal = palette();
-            pal.setColor(QPalette::Window, QColor(240, 255, 240));  // Light green for recording
-            setPalette(pal);
-            m_statusLabel->setPalette(pal);
-            m_volumeLabel->setPalette(pal);
-        }
+            // No need to change background on first data anymore, 
+        // that's handled by onRecordingStarted()
     }
 }
 
@@ -203,4 +196,19 @@ void MainWindow::onRecordingStopped()
     QTimer::singleShot(1000, this, [this]() {
         m_volumeLabel->setText("Press Enter to save and exit, or Esc to cancel");
     });
+}
+
+void MainWindow::onRecordingStarted()
+{
+    // Change background to indicate active recording
+    QPalette pal = palette();
+    pal.setColor(QPalette::Window, QColor(240, 255, 240));  // Light green for recording
+    pal.setColor(QPalette::WindowText, QColor(0, 0, 0));    // Black text
+    setPalette(pal);
+    m_statusLabel->setPalette(pal);
+    m_volumeLabel->setPalette(pal);
+    
+    // Update status
+    m_statusLabel->setText("Recording in progress...");
+    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #006600;");
 }

@@ -43,6 +43,9 @@ bool AudioRecorder::startRecording()
             return;
         }
         qInfo() << "[INFO] Recording started:" << OUTPUT_FILE_PATH;
+        
+        // Signal that recording has started successfully
+        emit recordingStarted();
     });
     
     return true;

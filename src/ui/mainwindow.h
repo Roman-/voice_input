@@ -20,6 +20,7 @@ private slots:
     void updateUI();
     void onVolumeChanged(float volume);
     void onRecordingStopped();
+    void onRecordingStarted();
 
 private:
     void createVolumeBar();

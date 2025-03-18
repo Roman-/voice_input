@@ -27,6 +27,7 @@ public:
 signals:
     void volumeChanged(float newVolume);
     void recordingStopped();
+    void recordingStarted();
 
 private:
     bool initializePortAudio();
