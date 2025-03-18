@@ -40,11 +40,11 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
 
     setCentralWidget(central);
 
-    // Set colors for initializing state (light blue background)
+    // Set colors for dark mode initializing state
     QPalette pal = palette();
-    pal.setColor(QPalette::Window, QColor(240, 248, 255));  // Light blue for initializing
-    pal.setColor(QPalette::WindowText, QColor(0, 0, 0));    // Black text
-    pal.setColor(QPalette::Text, QColor(0, 0, 0));          // Black text for widgets
+    pal.setColor(QPalette::Window, QColor(30, 30, 40));        // Dark blue-gray background
+    pal.setColor(QPalette::WindowText, QColor(220, 220, 220)); // Light gray text
+    pal.setColor(QPalette::Text, QColor(220, 220, 220));       // Light gray text for widgets
     
     // Apply palette to window and labels directly
     setPalette(pal);
@@ -52,7 +52,7 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     m_volumeLabel->setPalette(pal);
     
     // Set status text style to be bold and larger with distinctive color
-    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #004488;");
+    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #5CAAFF;");
     
     // Show initializing state immediately
     m_statusLabel->setText("Initializing... (Press Enter to save, Esc to cancel)");
@@ -138,18 +138,18 @@ void MainWindow::createVolumeBar()
         bar->setValue(0);
         bar->setTextVisible(false);
         
-        // Color gradient from green to yellow to red
+        // Color gradient from green to yellow to red - dark mode colors
         QColor color;
-        if (i < segments * 0.6) {            // First 60% - Green
-            color = QColor(0, 200, 0);
-        } else if (i < segments * 0.8) {     // Next 20% - Yellow
-            color = QColor(200, 200, 0);
-        } else {                             // Last 20% - Red
-            color = QColor(200, 0, 0);
+        if (i < segments * 0.6) {            // First 60% - Bright Green
+            color = QColor(0, 230, 118);
+        } else if (i < segments * 0.8) {     // Next 20% - Bright Yellow
+            color = QColor(255, 214, 0);
+        } else {                             // Last 20% - Bright Red
+            color = QColor(255, 82, 82);
         }
         
-        // Set the bar color via stylesheet
-        QString style = QString("QProgressBar { background: #444; border: 1px solid #222; border-radius: 2px; } "
+        // Set the bar color via stylesheet with dark mode styling
+        QString style = QString("QProgressBar { background: #222; border: 1px solid #333; border-radius: 2px; } "
                                "QProgressBar::chunk { background-color: %1; }")
                         .arg(color.name());
         bar->setStyleSheet(style);
@@ -209,12 +209,13 @@ void MainWindow::updateVolumeBar(float volume)
 void MainWindow::onRecordingStopped()
 {
     m_statusLabel->setText("Recording Stopped. File saved.");
-    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #006600;");
+    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #4CFF64;");
     
     // Change background to indicate recording has stopped
     QPalette pal = palette();
-    pal.setColor(QPalette::Window, QColor(220, 220, 220));  // Slightly darker gray for completed state
-    pal.setColor(QPalette::WindowText, QColor(0, 0, 0));    // Black text
+    pal.setColor(QPalette::Window, QColor(40, 40, 40));        // Dark gray for completed state
+    pal.setColor(QPalette::WindowText, QColor(200, 200, 200)); // Light gray text
+    pal.setColor(QPalette::Text, QColor(200, 200, 200));       // Light gray text for widgets
     setPalette(pal);
     m_statusLabel->setPalette(pal);
     m_volumeLabel->setPalette(pal);
@@ -236,12 +237,14 @@ void MainWindow::onAudioDeviceReady()
 {
     // Update UI when audio device is fully ready and recording is actually happening
     m_statusLabel->setText("Recording in progress... (Press Enter to save, Esc to cancel)");
-    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #006600;");
+    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #4CFF64;");
     m_volumeLabel->setText("Audio device ready - recording in progress");
     
     // Change background to indicate active recording
     QPalette pal = palette();
-    pal.setColor(QPalette::Window, QColor(240, 255, 240));  // Light green for active recording
+    pal.setColor(QPalette::Window, QColor(25, 40, 25));        // Dark green for active recording
+    pal.setColor(QPalette::WindowText, QColor(220, 220, 220)); // Light gray text
+    pal.setColor(QPalette::Text, QColor(220, 220, 220));       // Light gray text for widgets
     setPalette(pal);
     
     qInfo() << "Audio device is fully initialized and recording has started";
@@ -270,7 +273,7 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
         
         // Update UI
         m_statusLabel->setText("Recording canceled.");
-        m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #cc0000;");
+        m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #FF6B6B;");
         
         // Wait briefly to show status, then quit application
         QTimer::singleShot(500, []() {
