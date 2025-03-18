@@ -3,11 +3,12 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QDebug>
+#include <QTimer>
 #include <csignal>
 
-#include "src/config/config.h"
-#include "src/core/audiorecorder.h"
-#include "src/ui/mainwindow.h"
+#include "config/config.h"
+#include "core/audiorecorder.h"
+#include "ui/mainwindow.h"
 
 // Global pointer to AudioRecorder for signal handling
 static AudioRecorder* g_audioRecorder = nullptr;

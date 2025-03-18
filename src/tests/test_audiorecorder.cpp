@@ -1,5 +1,5 @@
 #include <QtTest/QtTest>
-#include "src/core/audiorecorder.h"
+#include "core/audiorecorder.h"
 
 class TestAudioRecorder : public QObject
 {

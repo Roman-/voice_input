@@ -3,7 +3,7 @@
 #include <QFileInfo>
 #include <QDateTime>
 
-#include "src/config/config.h"
+#include "config/config.h"
 
 AudioRecorder::AudioRecorder(QObject* parent)
     : QObject(parent),

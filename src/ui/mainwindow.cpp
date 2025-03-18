@@ -4,7 +4,7 @@
 #include <QPalette>
 #include <QColor>
 
-#include "src/core/audiorecorder.h"
+#include "core/audiorecorder.h"
 
 MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     : QMainWindow(parent),
