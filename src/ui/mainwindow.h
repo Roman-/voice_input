@@ -22,6 +22,10 @@ private slots:
     void onRecordingStopped();
     void onRecordingStarted();
 
+protected:
+    // Override key press event to handle Enter/Escape keys
+    void keyPressEvent(QKeyEvent* event) override;
+
 private:
     void createVolumeBar();
     void updateVolumeBar(float volume);

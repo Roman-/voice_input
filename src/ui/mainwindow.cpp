@@ -5,8 +5,11 @@
 #include <QPalette>
 #include <QColor>
 #include <QProgressBar>
+#include <QKeyEvent>
+#include <QApplication>
 
 #include "core/audiorecorder.h"
+#include "config/config.h"
 
 MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     : QMainWindow(parent),
@@ -92,10 +95,10 @@ void MainWindow::updateUI()
     
     // Only update recording info after we have some data (indicates initialization is complete)
     if (size > 0) {
-        QString infoText = QString("Recording... %1:%2 | Size: %.2f KB")
+        QString infoText = QString("Recording... %1:%2 | Size: %3 KB")
                 .arg(minutes, 2, 10, QChar('0'))
                 .arg(seconds, 2, 10, QChar('0'))
-                .arg(sizeKB);
+                .arg(sizeKB, 0, 'f', 2);
         m_statusLabel->setText(infoText);
         
             // No need to change background on first data anymore, 
@@ -209,6 +212,53 @@ void MainWindow::onRecordingStarted()
     m_volumeLabel->setPalette(pal);
     
     // Update status
-    m_statusLabel->setText("Recording in progress...");
+    m_statusLabel->setText("Recording in progress... (Press Enter to save, Esc to cancel)");
     m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #006600;");
+}
+
+void MainWindow::keyPressEvent(QKeyEvent* event)
+{
+    if (!m_recorder) {
+        QMainWindow::keyPressEvent(event);
+        return;
+    }
+    
+    if (event->key() == Qt::Key_Escape) {
+        // Escape key pressed - cancel recording and exit without saving
+        qInfo() << "[INFO] Escape key pressed - canceling recording";
+        
+        // Stop recording
+        m_recorder->stopRecording();
+        
+        // Remove the output file
+        QFile outputFile(OUTPUT_FILE_PATH);
+        if (outputFile.exists()) {
+            outputFile.remove();
+            qInfo() << "[INFO] Output file removed:" << OUTPUT_FILE_PATH;
+        }
+        
+        // Update UI
+        m_statusLabel->setText("Recording canceled.");
+        m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #cc0000;");
+        
+        // Wait briefly to show status, then quit application
+        QTimer::singleShot(500, []() {
+            QApplication::quit();
+        });
+    }
+    else if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
+        // Enter key pressed - stop recording, save the file, and exit
+        qInfo() << "[INFO] Enter key pressed - stopping recording and saving";
+        
+        // Stop recording
+        m_recorder->stopRecording();
+        
+        // Wait briefly to show status, then quit application
+        QTimer::singleShot(500, []() {
+            QApplication::quit();
+        });
+    }
+    else {
+        QMainWindow::keyPressEvent(event);
+    }
 }
