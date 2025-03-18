@@ -40,9 +40,9 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
 
     setCentralWidget(central);
 
-    // Set colors for recording state directly (green background)
+    // Set colors for initializing state (light blue background)
     QPalette pal = palette();
-    pal.setColor(QPalette::Window, QColor(240, 255, 240));  // Light green for recording
+    pal.setColor(QPalette::Window, QColor(240, 248, 255));  // Light blue for initializing
     pal.setColor(QPalette::WindowText, QColor(0, 0, 0));    // Black text
     pal.setColor(QPalette::Text, QColor(0, 0, 0));          // Black text for widgets
     
@@ -52,11 +52,11 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     m_volumeLabel->setPalette(pal);
     
     // Set status text style to be bold and larger with distinctive color
-    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #006600;");
+    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #004488;");
     
-    // Show recording state immediately
-    m_statusLabel->setText("Recording in progress... (Press Enter to save, Esc to cancel)");
-    m_volumeLabel->setText("Initializing audio device...");
+    // Show initializing state immediately
+    m_statusLabel->setText("Initializing... (Press Enter to save, Esc to cancel)");
+    m_volumeLabel->setText("Starting audio device...");
 
     // Connect signals from recorder
     connect(m_recorder, &AudioRecorder::volumeChanged, this, &MainWindow::onVolumeChanged);
@@ -227,15 +227,24 @@ void MainWindow::onRecordingStopped()
 
 void MainWindow::onRecordingStarted()
 {
-    // Update volume label when audio device initialization starts
+    // Update UI when recording initialization starts
+    m_statusLabel->setText("Initializing audio system...");
     m_volumeLabel->setText("Audio device initializing...");
 }
 
 void MainWindow::onAudioDeviceReady()
 {
-    // Update UI when audio device is fully ready
-    m_volumeLabel->setText("Audio device ready - waiting for input...");
-    qInfo() << "Audio device is fully initialized and ready for input";
+    // Update UI when audio device is fully ready and recording is actually happening
+    m_statusLabel->setText("Recording in progress... (Press Enter to save, Esc to cancel)");
+    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #006600;");
+    m_volumeLabel->setText("Audio device ready - recording in progress");
+    
+    // Change background to indicate active recording
+    QPalette pal = palette();
+    pal.setColor(QPalette::Window, QColor(240, 255, 240));  // Light green for active recording
+    setPalette(pal);
+    
+    qInfo() << "Audio device is fully initialized and recording has started";
 }
 
 void MainWindow::keyPressEvent(QKeyEvent* event)
