@@ -4,6 +4,7 @@
 #include <QMainWindow>
 #include <QLabel>
 #include <QTimer>
+#include <QHBoxLayout>
 
 class AudioRecorder;
 
@@ -21,10 +22,16 @@ private slots:
     void onRecordingStopped();
 
 private:
+    void createVolumeBar();
+    void updateVolumeBar(float volume);
+
+private:
     AudioRecorder* m_recorder;
     QLabel*        m_statusLabel;
     QLabel*        m_volumeLabel;
     QTimer         m_updateTimer;
+    QWidget*       m_volumeBar;
+    QHBoxLayout*   m_volumeBarLayout;
 };
 
 #endif // MAINWINDOW_H
