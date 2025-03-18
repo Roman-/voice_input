@@ -69,14 +69,12 @@ int main(int argc, char *argv[])
         recorder.stopRecording();
     });
 
+    // Create and prepare recorder immediately
+    recorder.startRecording();
+    
     // Create main window (UI) and pass a pointer to the recorder
     MainWindow window(&recorder);
     window.show();
-    
-    // Start recording asynchronously after the event loop starts (completely decouple UI startup)
-    QTimer::singleShot(0, [&recorder](){
-        recorder.startRecording();
-    });
 
     // If timeout was specified, stop after the given period
     if (timeoutMs > 0) {

@@ -34,7 +34,10 @@ bool AudioRecorder::startRecording()
     m_elapsedTimer.start();
     m_isRecording = true;
     
-    // Initialize PortAudio asynchronously
+    // Signal that recording has started (UI should reflect this immediately)
+    emit recordingStarted();
+    
+    // Initialize PortAudio asynchronously - don't block UI
     m_initFuture = QtConcurrent::run([this]() {
         if (!initializePortAudio()) {
             qCritical() << "[ERROR] Failed to initialize PortAudio";
@@ -42,10 +45,7 @@ bool AudioRecorder::startRecording()
             m_outputFile.close();
             return;
         }
-        qInfo() << "[INFO] Recording started:" << OUTPUT_FILE_PATH;
-        
-        // Signal that recording has started successfully
-        emit recordingStarted();
+        qInfo() << "[INFO] Audio device initialized successfully, recording to:" << OUTPUT_FILE_PATH;
     });
     
     return true;
