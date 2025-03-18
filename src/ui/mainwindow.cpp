@@ -104,11 +104,17 @@ void MainWindow::onVolumeChanged(float volume)
     if (firstVolume) {
         firstVolume = false;
         m_volumeLabel->setText("Audio capture active");
+        qInfo() << "[INFO] First audio data received, volume:" << volume;
     }
     
-    // Update volume display
-    m_volumeLabel->setText(QString("Volume: %1").arg(volume, 0, 'f', 3));
-    updateVolumeBar(volume);
+    // Only update if we have a significant volume level (reduces noise in display)
+    static float lastVolume = 0.0f;
+    if (qAbs(volume - lastVolume) > 0.005f) {
+        // Update volume display with more precision to see small changes
+        m_volumeLabel->setText(QString("Volume: %1").arg(volume, 0, 'f', 4));
+        updateVolumeBar(volume);
+        lastVolume = volume;
+    }
 }
 
 void MainWindow::createVolumeBar()
@@ -153,8 +159,26 @@ void MainWindow::createVolumeBar()
 
 void MainWindow::updateVolumeBar(float volume)
 {
-    // Scale volume to our display (0.0-1.0 to 0-100%)
-    int scaledVolume = static_cast<int>(volume * 100);
+    // Scale volume with a curve to make small volumes more visible
+    // Using log scale - make values between 0.01-0.1 much more visible
+    // This helps with typical microphone input levels
+    float scaledVolume;
+    if (volume <= 0.0f) {
+        scaledVolume = 0.0f;
+    } else {
+        // Log transformation to boost low values
+        scaledVolume = (log10f(1.0f + volume * 9.0f) / log10f(10.0f)) * 100.0f;
+    }
+    
+    // Ensure scaledVolume is within 0-100 range
+    scaledVolume = qBound(0.0f, scaledVolume, 100.0f);
+    
+    // Log volume levels periodically for debugging
+    static QElapsedTimer logTimer;
+    if (!logTimer.isValid() || logTimer.elapsed() > 5000) { // Log every 5 seconds
+        qDebug() << "[DEBUG] Raw volume:" << volume << "Scaled volume:" << scaledVolume;
+        logTimer.start();
+    }
     
     // Update each segment
     for (int i = 0; i < m_volumeBarLayout->count(); i++) {
@@ -169,9 +193,9 @@ void MainWindow::updateVolumeBar(float volume)
                 // Calculate partial fill based on how close we are to threshold
                 int prevThreshold = i * (100 / m_volumeBarLayout->count());
                 int segmentRange = threshold - prevThreshold;
-                int segmentVolume = scaledVolume - prevThreshold;
+                float segmentVolume = scaledVolume - prevThreshold;
                 if (segmentVolume > 0) {
-                    int pct = (segmentVolume * 100) / segmentRange;
+                    int pct = qBound(0, static_cast<int>((segmentVolume * 100) / segmentRange), 100);
                     bar->setValue(pct);
                 } else {
                     bar->setValue(0);  // Empty

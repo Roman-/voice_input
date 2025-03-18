@@ -70,6 +70,10 @@ bool AudioRecorder::startRecording()
             m_outputFile.close();
             return;
         }
+        
+        // Force a small delay to ensure proper audio device setup
+        QThread::msleep(100);
+        
         qInfo() << "[INFO] Audio device initialized successfully, recording to:" << OUTPUT_FILE_PATH;
     });
     
@@ -307,10 +311,37 @@ bool AudioRecorder::initializePortAudio()
 {
     qInfo() << "[DEBUG] Initializing PortAudio";
 
+    // Try to terminate any prior instances first, for safety
+    Pa_Terminate();
+    
+    // Initialize PortAudio library
     PaError err = Pa_Initialize();
     if (err != paNoError) {
         qCritical() << "[ERROR] Pa_Initialize() failed:" << Pa_GetErrorText(err);
         return false;
+    }
+    
+    // Ensure we have at least one input device
+    int numDevices = Pa_GetDeviceCount();
+    if (numDevices < 1) {
+        qCritical() << "[ERROR] No audio devices found!";
+        Pa_Terminate();
+        return false;
+    }
+    
+    // Find the default input device
+    int defaultInputDevice = Pa_GetDefaultInputDevice();
+    if (defaultInputDevice == paNoDevice) {
+        qCritical() << "[ERROR] No default input device!";
+        Pa_Terminate();
+        return false;
+    }
+    
+    // Log device info
+    const PaDeviceInfo* deviceInfo = Pa_GetDeviceInfo(defaultInputDevice);
+    if (deviceInfo) {
+        qInfo() << "[INFO] Using input device:" << deviceInfo->name 
+                << "with" << deviceInfo->maxInputChannels << "channels";
     }
 
     // Open default stream with input channels, no output channels
@@ -367,11 +398,14 @@ int AudioRecorder::audioCallback( const void *inputBuffer,
 void AudioRecorder::handleAudioData(const void* inputBuffer, unsigned long frames)
 {
     QMutexLocker locker(&m_dataMutex);
-    if (!m_isRecording || !inputBuffer || !m_stream) {
+    
+    // Just return if we don't have valid input buffer (no audio data)
+    if (!inputBuffer) {
         return;
     }
-
-    // Basic volume level calculation for demonstration
+    
+    // Always calculate volume level when we have data, even if not recording
+    // This ensures volume meter shows feedback immediately
     const short* buffer = reinterpret_cast<const short*>(inputBuffer);
     long sum = 0;
     for (unsigned long i = 0; i < frames; ++i) {
@@ -379,9 +413,14 @@ void AudioRecorder::handleAudioData(const void* inputBuffer, unsigned long frame
     }
     float average = static_cast<float>(sum) / frames;
     m_currentVolume = average / 32767.0f;  // normalized ~0..1
-
-    // Emit volumeChanged if desired
+    
+    // Always emit volume change to update UI
     emit volumeChanged(m_currentVolume);
+    
+    // Only process for recording if we're actually recording and stream is ready
+    if (!m_isRecording || !m_stream) {
+        return;
+    }
 
     // Encode and write audio data if encoder is ready
     if (m_aacInitialized) {
