@@ -21,6 +21,7 @@ private slots:
     void onVolumeChanged(float volume);
     void onRecordingStopped();
     void onRecordingStarted();
+    void onAudioDeviceReady();
 
 protected:
     // Override key press event to handle Enter/Escape keys

@@ -62,6 +62,7 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     connect(m_recorder, &AudioRecorder::volumeChanged, this, &MainWindow::onVolumeChanged);
     connect(m_recorder, &AudioRecorder::recordingStopped, this, &MainWindow::onRecordingStopped);
     connect(m_recorder, &AudioRecorder::recordingStarted, this, &MainWindow::onRecordingStarted);
+    connect(m_recorder, &AudioRecorder::audioDeviceReady, this, &MainWindow::onAudioDeviceReady);
 
     // Periodically update UI for elapsed time and file size
     m_updateTimer.setInterval(500); // 0.5 seconds
@@ -228,6 +229,13 @@ void MainWindow::onRecordingStarted()
 {
     // Update volume label when audio device initialization starts
     m_volumeLabel->setText("Audio device initializing...");
+}
+
+void MainWindow::onAudioDeviceReady()
+{
+    // Update UI when audio device is fully ready
+    m_volumeLabel->setText("Audio device ready - waiting for input...");
+    qInfo() << "Audio device is fully initialized and ready for input";
 }
 
 void MainWindow::keyPressEvent(QKeyEvent* event)

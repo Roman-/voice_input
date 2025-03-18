@@ -9,6 +9,7 @@ AudioRecorder::AudioRecorder(QObject* parent)
     : QObject(parent),
       m_stream(nullptr),
       m_isRecording(false),
+      m_audioDeviceInitialized(false),
       m_currentVolume(0.0f),
       m_aacEncoder(nullptr),
       m_aacInitialized(false)
@@ -71,9 +72,8 @@ bool AudioRecorder::startRecording()
             return;
         }
         
-        // Force a small delay to ensure proper audio device setup
-        QThread::msleep(100);
-        
+        // Mark that the audio device is ready - no artificial delay needed
+        m_audioDeviceInitialized = true;
         qInfo() << "Audio device initialized successfully, recording to:" << OUTPUT_FILE_PATH;
     });
     
@@ -416,6 +416,14 @@ void AudioRecorder::handleAudioData(const void* inputBuffer, unsigned long frame
     
     // Always emit volume change to update UI
     emit volumeChanged(m_currentVolume);
+    
+    // When we get first audio data, it confirms the audio device is fully ready
+    // This is the proper way to detect initialization completion
+    static bool signalEmitted = false;
+    if (m_audioDeviceInitialized && !signalEmitted) {
+        signalEmitted = true;
+        emit audioDeviceReady();
+    }
     
     // Only process for recording if we're actually recording and stream is ready
     if (!m_isRecording || !m_stream) {

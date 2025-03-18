@@ -30,6 +30,7 @@ signals:
     void volumeChanged(float newVolume);
     void recordingStopped();
     void recordingStarted();
+    void audioDeviceReady();
 
 private:
     bool initializePortAudio();
@@ -60,6 +61,7 @@ private:
     
     // State
     bool            m_isRecording;
+    bool            m_audioDeviceInitialized;
     float           m_currentVolume;
     QFuture<void>   m_initFuture;
     
