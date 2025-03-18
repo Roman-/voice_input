@@ -28,12 +28,12 @@ AudioRecorder::~AudioRecorder()
 
 bool AudioRecorder::startRecording()
 {
-    qInfo() << "[INFO] startRecording() called";
+    qInfo() << "startRecording() called";
 
     // Prepare output file immediately
     m_outputFile.setFileName(OUTPUT_FILE_PATH);
     if (!m_outputFile.open(QIODevice::WriteOnly)) {
-        qCritical() << "[ERROR] Unable to open output file for writing:" << OUTPUT_FILE_PATH;
+        qCritical() << "Unable to open output file for writing:" << OUTPUT_FILE_PATH;
         return false;
     }
 
@@ -43,14 +43,14 @@ bool AudioRecorder::startRecording()
     
     // Initialize AAC encoder
     if (!initializeAACEncoder()) {
-        qCritical() << "[ERROR] Failed to initialize AAC encoder";
+        qCritical() << "Failed to initialize AAC encoder";
         m_outputFile.close();
         return false;
     }
     
     // Write MP4 header
     if (!writeMP4Header()) {
-        qCritical() << "[ERROR] Failed to write MP4 header";
+        qCritical() << "Failed to write MP4 header";
         m_outputFile.close();
         return false;
     }
@@ -65,7 +65,7 @@ bool AudioRecorder::startRecording()
     // Initialize PortAudio asynchronously - don't block UI
     m_initFuture = QtConcurrent::run([this]() {
         if (!initializePortAudio()) {
-            qCritical() << "[ERROR] Failed to initialize PortAudio";
+            qCritical() << "Failed to initialize PortAudio";
             m_isRecording = false;
             m_outputFile.close();
             return;
@@ -74,7 +74,7 @@ bool AudioRecorder::startRecording()
         // Force a small delay to ensure proper audio device setup
         QThread::msleep(100);
         
-        qInfo() << "[INFO] Audio device initialized successfully, recording to:" << OUTPUT_FILE_PATH;
+        qInfo() << "Audio device initialized successfully, recording to:" << OUTPUT_FILE_PATH;
     });
     
     return true;
@@ -85,7 +85,7 @@ void AudioRecorder::stopRecording()
     if (!m_isRecording)
         return;
 
-    qInfo() << "[DEBUG] stopRecording() called";
+    qDebug() << "stopRecording() called";
     m_isRecording = false;
     
     // Wait for initialization to complete if it's still running
@@ -123,10 +123,10 @@ void AudioRecorder::stopRecording()
     // Verify file was created and has content
     QFileInfo fileInfo(OUTPUT_FILE_PATH);
     if (fileInfo.exists() && fileInfo.size() > 0) {
-        qInfo() << "[INFO] Recording stopped, file saved successfully to:" << OUTPUT_FILE_PATH 
+        qInfo() << "Recording stopped, file saved successfully to:" << OUTPUT_FILE_PATH 
                 << "Size:" << fileInfo.size() << "bytes";
     } else {
-        qWarning() << "[WARNING] Output file may be missing or empty:" << OUTPUT_FILE_PATH;
+        qWarning() << "Output file may be missing or empty:" << OUTPUT_FILE_PATH;
     }
 
     emit recordingStopped();
@@ -149,7 +149,7 @@ qint64 AudioRecorder::elapsedMs() const
 
 bool AudioRecorder::initializeAACEncoder()
 {
-    qInfo() << "[DEBUG] Initializing AAC encoder";
+    qDebug() << "Initializing AAC encoder";
 
     // Clean up any existing encoder
     finalizeAACEncoder();
@@ -157,7 +157,7 @@ bool AudioRecorder::initializeAACEncoder()
     // Create encoder instance
     AACENC_ERROR err = aacEncOpen(&m_aacEncoder, 0, NUM_CHANNELS);
     if (err != AACENC_OK) {
-        qCritical() << "[ERROR] Failed to open AAC encoder:" << err;
+        qCritical() << "Failed to open AAC encoder:" << err;
         return false;
     }
 
@@ -171,50 +171,50 @@ bool AudioRecorder::initializeAACEncoder()
 
     // Configure the encoder
     if ((err = aacEncoder_SetParam(m_aacEncoder, AACENC_AOT, aot)) != AACENC_OK) {
-        qCritical() << "[ERROR] Unable to set AOT:" << err;
+        qCritical() << "Unable to set AOT:" << err;
         aacEncClose(&m_aacEncoder);
         return false;
     }
     if ((err = aacEncoder_SetParam(m_aacEncoder, AACENC_SAMPLERATE, sampleRate)) != AACENC_OK) {
-        qCritical() << "[ERROR] Unable to set sample rate:" << err;
+        qCritical() << "Unable to set sample rate:" << err;
         aacEncClose(&m_aacEncoder);
         return false;
     }
     if ((err = aacEncoder_SetParam(m_aacEncoder, AACENC_CHANNELMODE, channelMode)) != AACENC_OK) {
-        qCritical() << "[ERROR] Unable to set channel mode:" << err;
+        qCritical() << "Unable to set channel mode:" << err;
         aacEncClose(&m_aacEncoder);
         return false;
     }
     if ((err = aacEncoder_SetParam(m_aacEncoder, AACENC_BITRATE, bitrate)) != AACENC_OK) {
-        qCritical() << "[ERROR] Unable to set bitrate:" << err;
+        qCritical() << "Unable to set bitrate:" << err;
         aacEncClose(&m_aacEncoder);
         return false;
     }
     if ((err = aacEncoder_SetParam(m_aacEncoder, AACENC_AFTERBURNER, afterburner)) != AACENC_OK) {
-        qCritical() << "[ERROR] Unable to set afterburner:" << err;
+        qCritical() << "Unable to set afterburner:" << err;
         aacEncClose(&m_aacEncoder);
         return false;
     }
     if ((err = aacEncoder_SetParam(m_aacEncoder, AACENC_SIGNALING_MODE, signaling)) != AACENC_OK) {
-        qCritical() << "[ERROR] Unable to set signaling mode:" << err;
+        qCritical() << "Unable to set signaling mode:" << err;
         aacEncClose(&m_aacEncoder);
         return false;
     }
     if ((err = aacEncoder_SetParam(m_aacEncoder, AACENC_TRANSMUX, TT_MP4_ADTS)) != AACENC_OK) {
-        qCritical() << "[ERROR] Unable to set transmux:" << err;
+        qCritical() << "Unable to set transmux:" << err;
         aacEncClose(&m_aacEncoder);
         return false;
     }
 
     // Initialize encoder
     if ((err = aacEncEncode(m_aacEncoder, NULL, NULL, NULL, NULL)) != AACENC_OK) {
-        qCritical() << "[ERROR] Unable to initialize encoder:" << err;
+        qCritical() << "Unable to initialize encoder:" << err;
         aacEncClose(&m_aacEncoder);
         return false;
     }
 
     m_aacInitialized = true;
-    qInfo() << "[DEBUG] AAC encoder initialized successfully";
+    qDebug() << "AAC encoder initialized successfully";
     return true;
 }
 
@@ -233,7 +233,7 @@ bool AudioRecorder::writeMP4Header()
     // The ADTS format adds its own header to each AAC frame
     // This isn't a full MP4 header, but it makes the file playable with most players
     
-    qInfo() << "[DEBUG] Writing MP4 header";
+    qDebug() << "Writing MP4 header";
     return true;
 }
 
@@ -241,7 +241,7 @@ bool AudioRecorder::finalizeMP4File()
 {
     // For a proper MP4 file, we'd need to update various fields in the file
     // For simplicity, we're using ADTS which embeds headers in each frame
-    qInfo() << "[DEBUG] Finalizing MP4 file";
+    qDebug() << "Finalizing MP4 file";
     return true;
 }
 
@@ -297,7 +297,7 @@ QByteArray AudioRecorder::encodeToAAC(const short* inputBuffer, int inputSize)
     AACENC_ERROR err = aacEncEncode(m_aacEncoder, &inBufDesc, &outBufDesc, &inArgs, &outArgs);
     if (err != AACENC_OK) {
         if (err != AACENC_ENCODE_EOF) {
-            qWarning() << "[WARNING] AAC encoding error:" << err;
+            qWarning() << "AAC encoding error:" << err;
         }
         return QByteArray();
     }
@@ -309,7 +309,7 @@ QByteArray AudioRecorder::encodeToAAC(const short* inputBuffer, int inputSize)
 
 bool AudioRecorder::initializePortAudio()
 {
-    qInfo() << "[DEBUG] Initializing PortAudio";
+    qDebug() << "Initializing PortAudio";
 
     // Try to terminate any prior instances first, for safety
     Pa_Terminate();
@@ -317,14 +317,14 @@ bool AudioRecorder::initializePortAudio()
     // Initialize PortAudio library
     PaError err = Pa_Initialize();
     if (err != paNoError) {
-        qCritical() << "[ERROR] Pa_Initialize() failed:" << Pa_GetErrorText(err);
+        qCritical() << "Pa_Initialize() failed:" << Pa_GetErrorText(err);
         return false;
     }
     
     // Ensure we have at least one input device
     int numDevices = Pa_GetDeviceCount();
     if (numDevices < 1) {
-        qCritical() << "[ERROR] No audio devices found!";
+        qCritical() << "No audio devices found!";
         Pa_Terminate();
         return false;
     }
@@ -332,7 +332,7 @@ bool AudioRecorder::initializePortAudio()
     // Find the default input device
     int defaultInputDevice = Pa_GetDefaultInputDevice();
     if (defaultInputDevice == paNoDevice) {
-        qCritical() << "[ERROR] No default input device!";
+        qCritical() << "No default input device!";
         Pa_Terminate();
         return false;
     }
@@ -340,7 +340,7 @@ bool AudioRecorder::initializePortAudio()
     // Log device info
     const PaDeviceInfo* deviceInfo = Pa_GetDeviceInfo(defaultInputDevice);
     if (deviceInfo) {
-        qInfo() << "[INFO] Using input device:" << deviceInfo->name 
+        qInfo() << "Using input device:" << deviceInfo->name 
                 << "with" << deviceInfo->maxInputChannels << "channels";
     }
 
@@ -354,21 +354,21 @@ bool AudioRecorder::initializePortAudio()
                                &AudioRecorder::audioCallback,
                                this);
     if (err != paNoError) {
-        qCritical() << "[ERROR] Pa_OpenDefaultStream() failed:" << Pa_GetErrorText(err);
+        qCritical() << "Pa_OpenDefaultStream() failed:" << Pa_GetErrorText(err);
         Pa_Terminate();
         return false;
     }
 
     err = Pa_StartStream(m_stream);
     if (err != paNoError) {
-        qCritical() << "[ERROR] Pa_StartStream() failed:" << Pa_GetErrorText(err);
+        qCritical() << "Pa_StartStream() failed:" << Pa_GetErrorText(err);
         Pa_CloseStream(m_stream);
         m_stream = nullptr;
         Pa_Terminate();
         return false;
     }
 
-    qInfo() << "[DEBUG] PortAudio stream opened successfully";
+    qDebug() << "PortAudio stream opened successfully";
     return true;
 }
 

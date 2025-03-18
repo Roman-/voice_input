@@ -104,7 +104,7 @@ void MainWindow::onVolumeChanged(float volume)
     if (firstVolume) {
         firstVolume = false;
         m_volumeLabel->setText("Audio capture active");
-        qInfo() << "[INFO] First audio data received, volume:" << volume;
+        qInfo() << "First audio data received, volume:" << volume;
     }
     
     // Only update if we have a significant volume level (reduces noise in display)
@@ -176,7 +176,7 @@ void MainWindow::updateVolumeBar(float volume)
     // Log volume levels periodically for debugging
     static QElapsedTimer logTimer;
     if (!logTimer.isValid() || logTimer.elapsed() > 5000) { // Log every 5 seconds
-        qDebug() << "[DEBUG] Raw volume:" << volume << "Scaled volume:" << scaledVolume;
+        qDebug() << "Raw volume:" << volume << "Scaled volume:" << scaledVolume;
         logTimer.start();
     }
     
