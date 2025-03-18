@@ -41,13 +41,27 @@ target_link_libraries(audio_recorder
     ${FDK_AAC_LIBRARIES}
 )
 
-# Add test executable
-add_executable(test_runner
+# Add test executables
+add_executable(test_recorder
     src/tests/test_audiorecorder.cpp
     src/core/audiorecorder.cpp
 )
 
-target_link_libraries(test_runner
+# Add file verification test
+add_executable(test_file_verification
+    src/tests/test_file_verification.cpp
+    src/core/audiorecorder.cpp
+)
+
+target_link_libraries(test_recorder
+    Qt5::Core
+    Qt5::Test
+    Qt5::Concurrent
+    ${PORTAUDIO_LIBRARIES}
+    ${FDK_AAC_LIBRARIES}
+)
+
+target_link_libraries(test_file_verification
     Qt5::Core
     Qt5::Test
     Qt5::Concurrent

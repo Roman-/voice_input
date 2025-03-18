@@ -9,14 +9,21 @@ AudioRecorder::AudioRecorder(QObject* parent)
     : QObject(parent),
       m_stream(nullptr),
       m_isRecording(false),
-      m_currentVolume(0.0f)
+      m_currentVolume(0.0f),
+      m_aacEncoder(nullptr),
+      m_aacInitialized(false)
 {
+    // Initialize data buffer for MP4 processing
+    m_encodedData.reserve(1024 * 1024); // Pre-allocate 1MB
+    m_dataBuffer.setBuffer(&m_encodedData);
+    m_dataBuffer.open(QIODevice::ReadWrite);
 }
 
 AudioRecorder::~AudioRecorder()
 {
     stopRecording();
     finalizePortAudio();
+    finalizeAACEncoder();
 }
 
 bool AudioRecorder::startRecording()
@@ -27,6 +34,24 @@ bool AudioRecorder::startRecording()
     m_outputFile.setFileName(OUTPUT_FILE_PATH);
     if (!m_outputFile.open(QIODevice::WriteOnly)) {
         qCritical() << "[ERROR] Unable to open output file for writing:" << OUTPUT_FILE_PATH;
+        return false;
+    }
+
+    // Reset data buffer
+    m_encodedData.clear();
+    m_dataBuffer.seek(0);
+    
+    // Initialize AAC encoder
+    if (!initializeAACEncoder()) {
+        qCritical() << "[ERROR] Failed to initialize AAC encoder";
+        m_outputFile.close();
+        return false;
+    }
+    
+    // Write MP4 header
+    if (!writeMP4Header()) {
+        qCritical() << "[ERROR] Failed to write MP4 header";
+        m_outputFile.close();
         return false;
     }
 
@@ -71,13 +96,34 @@ void AudioRecorder::stopRecording()
         m_stream = nullptr;
     }
 
+    // Finalize AAC encoding and MP4 file
+    if (m_aacInitialized) {
+        // Flush encoder
+        QByteArray finalData = encodeToAAC(nullptr, 0);
+        if (!finalData.isEmpty()) {
+            m_outputFile.write(finalData);
+        }
+        
+        // Finalize MP4 container
+        finalizeMP4File();
+        
+        // Clean up encoder
+        finalizeAACEncoder();
+    }
+
     // Close output file
     if (m_outputFile.isOpen()) {
         m_outputFile.close();
     }
 
-    // (Here you'd finalize/flush the AAC encoder)
-    qInfo() << "[INFO] Recording stopped, file saved successfully";
+    // Verify file was created and has content
+    QFileInfo fileInfo(OUTPUT_FILE_PATH);
+    if (fileInfo.exists() && fileInfo.size() > 0) {
+        qInfo() << "[INFO] Recording stopped, file saved successfully to:" << OUTPUT_FILE_PATH 
+                << "Size:" << fileInfo.size() << "bytes";
+    } else {
+        qWarning() << "[WARNING] Output file may be missing or empty:" << OUTPUT_FILE_PATH;
+    }
 
     emit recordingStopped();
 }
@@ -95,6 +141,166 @@ qint64 AudioRecorder::fileSize() const
 qint64 AudioRecorder::elapsedMs() const
 {
     return m_elapsedTimer.elapsed();
+}
+
+bool AudioRecorder::initializeAACEncoder()
+{
+    qInfo() << "[DEBUG] Initializing AAC encoder";
+
+    // Clean up any existing encoder
+    finalizeAACEncoder();
+
+    // Create encoder instance
+    AACENC_ERROR err = aacEncOpen(&m_aacEncoder, 0, NUM_CHANNELS);
+    if (err != AACENC_OK) {
+        qCritical() << "[ERROR] Failed to open AAC encoder:" << err;
+        return false;
+    }
+
+    // Set encoder parameters
+    int aot = AOT_AAC_LC;                         // AAC Low Complexity profile
+    int sampleRate = SAMPLE_RATE;
+    int channelMode = MODE_1;                     // Mono
+    int bitrate = ENCODER_BITRATE;                // From config.h
+    int afterburner = 1;                          // Quality boost
+    int signaling = 0;                            // Implicit signaling
+
+    // Configure the encoder
+    if ((err = aacEncoder_SetParam(m_aacEncoder, AACENC_AOT, aot)) != AACENC_OK) {
+        qCritical() << "[ERROR] Unable to set AOT:" << err;
+        aacEncClose(&m_aacEncoder);
+        return false;
+    }
+    if ((err = aacEncoder_SetParam(m_aacEncoder, AACENC_SAMPLERATE, sampleRate)) != AACENC_OK) {
+        qCritical() << "[ERROR] Unable to set sample rate:" << err;
+        aacEncClose(&m_aacEncoder);
+        return false;
+    }
+    if ((err = aacEncoder_SetParam(m_aacEncoder, AACENC_CHANNELMODE, channelMode)) != AACENC_OK) {
+        qCritical() << "[ERROR] Unable to set channel mode:" << err;
+        aacEncClose(&m_aacEncoder);
+        return false;
+    }
+    if ((err = aacEncoder_SetParam(m_aacEncoder, AACENC_BITRATE, bitrate)) != AACENC_OK) {
+        qCritical() << "[ERROR] Unable to set bitrate:" << err;
+        aacEncClose(&m_aacEncoder);
+        return false;
+    }
+    if ((err = aacEncoder_SetParam(m_aacEncoder, AACENC_AFTERBURNER, afterburner)) != AACENC_OK) {
+        qCritical() << "[ERROR] Unable to set afterburner:" << err;
+        aacEncClose(&m_aacEncoder);
+        return false;
+    }
+    if ((err = aacEncoder_SetParam(m_aacEncoder, AACENC_SIGNALING_MODE, signaling)) != AACENC_OK) {
+        qCritical() << "[ERROR] Unable to set signaling mode:" << err;
+        aacEncClose(&m_aacEncoder);
+        return false;
+    }
+    if ((err = aacEncoder_SetParam(m_aacEncoder, AACENC_TRANSMUX, TT_MP4_ADTS)) != AACENC_OK) {
+        qCritical() << "[ERROR] Unable to set transmux:" << err;
+        aacEncClose(&m_aacEncoder);
+        return false;
+    }
+
+    // Initialize encoder
+    if ((err = aacEncEncode(m_aacEncoder, NULL, NULL, NULL, NULL)) != AACENC_OK) {
+        qCritical() << "[ERROR] Unable to initialize encoder:" << err;
+        aacEncClose(&m_aacEncoder);
+        return false;
+    }
+
+    m_aacInitialized = true;
+    qInfo() << "[DEBUG] AAC encoder initialized successfully";
+    return true;
+}
+
+void AudioRecorder::finalizeAACEncoder()
+{
+    if (m_aacEncoder) {
+        aacEncClose(&m_aacEncoder);
+        m_aacEncoder = nullptr;
+    }
+    m_aacInitialized = false;
+}
+
+bool AudioRecorder::writeMP4Header()
+{
+    // Simple ADTS header for MP4 file
+    // The ADTS format adds its own header to each AAC frame
+    // This isn't a full MP4 header, but it makes the file playable with most players
+    
+    qInfo() << "[DEBUG] Writing MP4 header";
+    return true;
+}
+
+bool AudioRecorder::finalizeMP4File()
+{
+    // For a proper MP4 file, we'd need to update various fields in the file
+    // For simplicity, we're using ADTS which embeds headers in each frame
+    qInfo() << "[DEBUG] Finalizing MP4 file";
+    return true;
+}
+
+QByteArray AudioRecorder::encodeToAAC(const short* inputBuffer, int inputSize)
+{
+    if (!m_aacInitialized) {
+        return QByteArray();
+    }
+
+    QByteArray result;
+
+    // Prepare in/out buffers
+    AACENC_BufDesc inBufDesc = { 0 };
+    AACENC_BufDesc outBufDesc = { 0 };
+    AACENC_InArgs inArgs = { 0 };
+    AACENC_OutArgs outArgs = { 0 };
+
+    // Input buffer
+    void* inPtr = (void*)inputBuffer;
+    INT inSize = inputSize;
+    INT inIdentifier = IN_AUDIO_DATA;
+    INT inElemSize = sizeof(short);
+
+    inBufDesc.numBufs = 1;
+    inBufDesc.bufs = &inPtr;
+    inBufDesc.bufferIdentifiers = &inIdentifier;
+    inBufDesc.bufSizes = &inSize;
+    inBufDesc.bufElSizes = &inElemSize;
+
+    // Output buffer
+    int outSize = 8192; // Should be enough for the encoded output
+    result.resize(outSize);
+    void* outPtr = result.data();
+    INT outIdentifier = OUT_BITSTREAM_DATA;
+    INT outElemSize = 1;
+
+    outBufDesc.numBufs = 1;
+    outBufDesc.bufs = &outPtr;
+    outBufDesc.bufferIdentifiers = &outIdentifier;
+    outBufDesc.bufSizes = &outSize;
+    outBufDesc.bufElSizes = &outElemSize;
+
+    // Encoding arguments
+    if (inputBuffer) {
+        // For audio data
+        inArgs.numInSamples = inputSize / sizeof(short);
+    } else {
+        // For flush
+        inArgs.numInSamples = -1;
+    }
+
+    // Encode
+    AACENC_ERROR err = aacEncEncode(m_aacEncoder, &inBufDesc, &outBufDesc, &inArgs, &outArgs);
+    if (err != AACENC_OK) {
+        if (err != AACENC_ENCODE_EOF) {
+            qWarning() << "[WARNING] AAC encoding error:" << err;
+        }
+        return QByteArray();
+    }
+
+    // Resize result to the actual output size
+    result.resize(outArgs.numOutBytes);
+    return result;
 }
 
 bool AudioRecorder::initializePortAudio()
@@ -177,8 +383,11 @@ void AudioRecorder::handleAudioData(const void* inputBuffer, unsigned long frame
     // Emit volumeChanged if desired
     emit volumeChanged(m_currentVolume);
 
-    // Write raw data directly to file (placeholder)
-    // In reality, you'd feed the data to your AAC encoder, then write the encoded frames.
-    m_outputFile.write(reinterpret_cast<const char*>(inputBuffer),
-                       frames * sizeof(short));
+    // Encode and write audio data if encoder is ready
+    if (m_aacInitialized) {
+        QByteArray encodedData = encodeToAAC(buffer, frames * sizeof(short));
+        if (!encodedData.isEmpty()) {
+            m_outputFile.write(encodedData);
+        }
+    }
 }
