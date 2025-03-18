@@ -1,46 +1,40 @@
-cmake_minimum_required(VERSION 3.10)
-project(VoiceInputApp LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.5)
+project(AudioRecorder)
 
-# Tell CMake we want to use C++17 (or higher).
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Include Cmake's automoc processing
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTORCC ON)
-set(CMAKE_AUTOUIC ON)
+# Find Qt5 (adjust if you have Qt6)
+find_package(Qt5 COMPONENTS Core Widgets Test REQUIRED)
 
-# Find Qt components
-find_package(Qt5 5.15 REQUIRED COMPONENTS Core Gui Widgets Multimedia Network)
+# Find PortAudio
+find_package(PortAudio REQUIRED)
+
+# Include directories
+include_directories(
+    ${PORTAUDIO_INCLUDE_DIRS}
+    src
+    src/config
+)
 
 # Source files
 set(SOURCES
     main.cpp
-    mainwindow.cpp
-    mainwindow.h
-    whisperapi.cpp
-    whisperapi.h
+    src/core/audiorecorder.cpp
+    src/ui/mainwindow.cpp
+    src/tests/test_audiorecorder.cpp
 )
 
-# Create an executable from our source files
-add_executable(${PROJECT_NAME} ${SOURCES})
+add_executable(audio_recorder ${SOURCES})
 
-# Link Qt libraries
-target_link_libraries(${PROJECT_NAME}
+target_link_libraries(audio_recorder
     Qt5::Core
-    Qt5::Gui
     Qt5::Widgets
-    Qt5::Multimedia
-    Qt5::Network
+    Qt5::Test
+    ${PORTAUDIO_LIBRARIES}
 )
 
-# Test executable for auto-stop functionality
-add_executable(test_auto_stop test_auto_stop.cpp)
-target_link_libraries(test_auto_stop
-    Qt5::Core
-)
-
-# If you have UI .ui files, use:
-# set(UI_FILES mainwindow.ui)
-# qt5_wrap_ui(UI_HEADERS ${UI_FILES})
-# and add the generated UI_HEADERS to your list of sources.
+# Optionally create a custom command to run tests (if you'd like)
+# add_custom_target(run_tests
+#   COMMAND audio_recorder --test
+#   DEPENDS audio_recorder
+# )

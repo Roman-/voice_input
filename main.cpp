@@ -1,54 +1,92 @@
 #include <QApplication>
-#include <QFile>
-#include <QDebug>
 #include <QCommandLineParser>
-#include "mainwindow.h"
-#include "config.h"
+#include <QFile>
+#include <QFileInfo>
+#include <QDebug>
+#include <csignal>
 
-static void cleanupOldFiles()
+#include "src/config/config.h"
+#include "src/core/audiorecorder.h"
+#include "src/ui/mainwindow.h"
+
+// Global pointer to AudioRecorder for signal handling
+static AudioRecorder* g_audioRecorder = nullptr;
+
+static void signalHandler(int sig)
 {
-    // Remove current path files
-    QFile::remove(Config::RECORDING_PATH);
-    QFile::remove(Config::TRANSCRIPTION_PATH);
+    qInfo() << "[INFO] Received termination signal:" << sig;
+    if (g_audioRecorder) {
+        g_audioRecorder->stopRecording();
+    }
+    QCoreApplication::quit();
 }
 
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
-    app.setApplicationName("voice_input");
-    app.setApplicationVersion("1.0");
 
-    // Set up command line parsing
+    // Configure logging format for simplicity
+    // (Alternatively, configure qInstallMessageHandler for advanced logging)
+    qSetMessagePattern("[%{type}] %{message}");
+
+    qInfo() << "[INFO] Application started";
+
+    // Remove any leftover output file from previous runs
+    QFile leftoverFile(OUTPUT_FILE_PATH);
+    if (leftoverFile.exists()) {
+        leftoverFile.remove();
+        qInfo() << "[DEBUG] Removed leftover file:" << OUTPUT_FILE_PATH;
+    }
+
+    // Parse command line arguments
     QCommandLineParser parser;
-    parser.setApplicationDescription("Voice input application");
+    parser.setApplicationDescription("Audio Recorder Application");
     parser.addHelpOption();
-    parser.addVersionOption();
 
-    // Add --send option
-    QCommandLineOption sendOption(QStringList() << "s" << "send", "Send recording to OpenAI for transcription");
-    parser.addOption(sendOption);
-    
-    // Add --force-stop-after option (in seconds)
-    QCommandLineOption forceStopOption(
-        QStringList() << "f" << "force-stop-after", 
-        "Automatically stop recording after specified time (in seconds)",
-        "seconds", "0");
-    parser.addOption(forceStopOption);
+    QCommandLineOption timeoutOption(QStringList() << "t" << "timeout",
+                                     "Stop recording after <milliseconds> timeout.",
+                                     "milliseconds");
+    parser.addOption(timeoutOption);
 
-    // Process the command line arguments
     parser.process(app);
-    bool sendToOpenAI = parser.isSet(sendOption);
-    
-    // Get the force stop time in milliseconds (converting from seconds)
-    bool ok;
-    qint64 forceStopAfterSeconds = parser.value(forceStopOption).toLongLong(&ok);
-    qint64 forceStopAfterMs = ok ? forceStopAfterSeconds * 1000 : 0;
 
-    // Clean up old temporary files from previous runs
-    cleanupOldFiles();
+    int timeoutMs = DEFAULT_TIMEOUT;
+    if (parser.isSet(timeoutOption)) {
+        bool ok = false;
+        int val = parser.value(timeoutOption).toInt(&ok);
+        if (ok && val > 0) {
+            timeoutMs = val;
+        }
+    }
 
-    MainWindow w(sendToOpenAI, forceStopAfterMs);
-    w.show();
+    // Create the AudioRecorder
+    AudioRecorder recorder;
+    g_audioRecorder = &recorder; // For signalHandler access
+
+    // Connect aboutToQuit for graceful cleanup
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, [&](){
+        recorder.stopRecording();
+    });
+
+    // Create main window (UI) and pass a pointer to the recorder
+    MainWindow window(&recorder);
+    window.show();
+
+    // Start recording asynchronously
+    recorder.startRecording();
+
+    // If timeout was specified, stop after the given period
+    if (timeoutMs > 0) {
+        QTimer::singleShot(timeoutMs, [&](){
+            qInfo() << "[INFO] Timeout reached:" << timeoutMs << "ms";
+            recorder.stopRecording();
+            QApplication::quit();
+        });
+    }
+
+    // Install signal handlers for SIGINT, SIGTERM
+    std::signal(SIGINT, signalHandler);
+    std::signal(SIGTERM, signalHandler);
 
     return app.exec();
 }
