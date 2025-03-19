@@ -108,11 +108,14 @@ void MainWindow::onVolumeChanged(float volume)
         qInfo() << "First audio data received, volume:" << volume;
     }
     
+    // Calculate percentage for display (more intuitive for users)
+    int volumePercentage = static_cast<int>(volume * 100.0f);
+    
     // Only update if we have a significant volume level (reduces noise in display)
     static float lastVolume = 0.0f;
     if (qAbs(volume - lastVolume) > 0.005f) {
-        // Update volume display with more precision to see small changes
-        m_volumeLabel->setText(QString("Volume: %1").arg(volume, 0, 'f', 4));
+        // Update volume display to show percentage
+        m_volumeLabel->setText(QString("Volume: %1%").arg(volumePercentage));
         updateVolumeBar(volume);
         lastVolume = volume;
     }
@@ -160,15 +163,19 @@ void MainWindow::createVolumeBar()
 
 void MainWindow::updateVolumeBar(float volume)
 {
+    // Skip processing very low volumes (reduces noise in the display)
+    if (volume < VOLUME_MIN_THRESHOLD) {
+        volume = 0.0f;
+    }
+    
     // Scale volume with a curve to make small volumes more visible
-    // Using log scale - make values between 0.01-0.1 much more visible
-    // This helps with typical microphone input levels
+    // Using stronger log scale based on config parameters
     float scaledVolume;
     if (volume <= 0.0f) {
         scaledVolume = 0.0f;
     } else {
-        // Log transformation to boost low values
-        scaledVolume = (log10f(1.0f + volume * 9.0f) / log10f(10.0f)) * 100.0f;
+        // Enhanced log transformation to boost low values
+        scaledVolume = (log10f(1.0f + volume * (VOLUME_LOG_BASE - 1.0f)) / log10f(VOLUME_LOG_BASE)) * 100.0f;
     }
     
     // Ensure scaledVolume is within 0-100 range

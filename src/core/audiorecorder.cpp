@@ -412,7 +412,10 @@ void AudioRecorder::handleAudioData(const void* inputBuffer, unsigned long frame
         sum += qAbs(buffer[i]);
     }
     float average = static_cast<float>(sum) / frames;
-    m_currentVolume = average / 32767.0f;  // normalized ~0..1
+    
+    // Scale the volume using the config scaling factor
+    float normalizedVolume = average / 32767.0f;  // normalize to ~0..1
+    m_currentVolume = qMin(normalizedVolume * VOLUME_SCALING_FACTOR, 1.0f);  // Apply scaling with 1.0 max
     
     // Always emit volume change to update UI
     emit volumeChanged(m_currentVolume);
