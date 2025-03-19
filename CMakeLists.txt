@@ -4,7 +4,7 @@ project(AudioRecorder)
 set(CMAKE_CXX_STANDARD 17)
 
 # Find Qt5 (adjust if you have Qt6)
-find_package(Qt5 COMPONENTS Core Widgets Test Concurrent REQUIRED)
+find_package(Qt5 COMPONENTS Core Widgets Test Concurrent Network REQUIRED)
 
 # Find PortAudio and libfdk-aac
 find_package(PkgConfig REQUIRED)
@@ -28,6 +28,7 @@ set(CMAKE_AUTORCC ON)
 set(SOURCES
     main.cpp
     src/core/audiorecorder.cpp
+    src/core/transcriptionservice.cpp
     src/ui/mainwindow.cpp
 )
 
@@ -37,6 +38,7 @@ target_link_libraries(audio_recorder
     Qt5::Core
     Qt5::Widgets
     Qt5::Concurrent
+    Qt5::Network
     ${PORTAUDIO_LIBRARIES}
     ${FDK_AAC_LIBRARIES}
 )
@@ -53,10 +55,17 @@ add_executable(test_file_verification
     src/core/audiorecorder.cpp
 )
 
+# Add transcription test
+add_executable(test_transcription
+    src/tests/test_transcription.cpp
+    src/core/transcriptionservice.cpp
+)
+
 target_link_libraries(test_recorder
     Qt5::Core
     Qt5::Test
     Qt5::Concurrent
+    Qt5::Network
     ${PORTAUDIO_LIBRARIES}
     ${FDK_AAC_LIBRARIES}
 )
@@ -65,8 +74,17 @@ target_link_libraries(test_file_verification
     Qt5::Core
     Qt5::Test
     Qt5::Concurrent
+    Qt5::Network
     ${PORTAUDIO_LIBRARIES}
     ${FDK_AAC_LIBRARIES}
+)
+
+# No mock mode needed, using real API
+
+target_link_libraries(test_transcription
+    Qt5::Core
+    Qt5::Test
+    Qt5::Network
 )
 
 # Optionally create a custom command to run tests (if you'd like)

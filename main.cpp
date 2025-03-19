@@ -32,11 +32,17 @@ int main(int argc, char *argv[])
 
     qInfo() << "[INFO] Application started";
 
-    // Remove any leftover output file from previous runs
-    QFile leftoverFile(OUTPUT_FILE_PATH);
-    if (leftoverFile.exists()) {
-        leftoverFile.remove();
-        qInfo() << "[DEBUG] Removed leftover file:" << OUTPUT_FILE_PATH;
+    // Remove any leftover files from previous runs
+    QFile leftoverAudioFile(OUTPUT_FILE_PATH);
+    if (leftoverAudioFile.exists()) {
+        leftoverAudioFile.remove();
+        qInfo() << "[DEBUG] Removed leftover audio file:" << OUTPUT_FILE_PATH;
+    }
+    
+    QFile leftoverTranscriptionFile(TRANSCRIPTION_OUTPUT_PATH);
+    if (leftoverTranscriptionFile.exists()) {
+        leftoverTranscriptionFile.remove();
+        qInfo() << "[DEBUG] Removed leftover transcription file:" << TRANSCRIPTION_OUTPUT_PATH;
     }
 
     // Parse command line arguments

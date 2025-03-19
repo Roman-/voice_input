@@ -5,8 +5,10 @@
 #include <QLabel>
 #include <QTimer>
 #include <QHBoxLayout>
+#include <QPushButton>
 
 class AudioRecorder;
+class TranscriptionService;
 
 class MainWindow : public QMainWindow
 {
@@ -22,6 +24,12 @@ private slots:
     void onRecordingStopped();
     void onRecordingStarted();
     void onAudioDeviceReady();
+    
+    // Transcription slots
+    void onTranscribeButtonClicked();
+    void onTranscriptionCompleted(const QString& transcribedText);
+    void onTranscriptionFailed(const QString& errorMessage);
+    void onTranscriptionProgress(const QString& status);
 
 protected:
     // Override key press event to handle Enter/Escape keys
@@ -30,14 +38,19 @@ protected:
 private:
     void createVolumeBar();
     void updateVolumeBar(float volume);
+    void setupTranscriptionUI();
 
 private:
     AudioRecorder* m_recorder;
+    TranscriptionService* m_transcriptionService;
     QLabel*        m_statusLabel;
     QLabel*        m_volumeLabel;
+    QLabel*        m_transcriptionLabel;
     QTimer         m_updateTimer;
     QWidget*       m_volumeBar;
     QHBoxLayout*   m_volumeBarLayout;
+    QPushButton*   m_transcribeButton;
+    bool           m_hasApiKey;
 };
 
 #endif // MAINWINDOW_H

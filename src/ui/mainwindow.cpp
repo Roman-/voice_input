@@ -7,19 +7,28 @@
 #include <QProgressBar>
 #include <QKeyEvent>
 #include <QApplication>
+#include <QMessageBox>
+#include <QDesktopServices>
+#include <QUrl>
+#include <QDir>
 
 #include "core/audiorecorder.h"
+#include "core/transcriptionservice.h"
 #include "config/config.h"
 
 MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     : QMainWindow(parent),
       m_recorder(recorder),
+      m_transcriptionService(new TranscriptionService(this)),
       m_statusLabel(new QLabel(this)),
-      m_volumeLabel(new QLabel(this))
+      m_volumeLabel(new QLabel(this)),
+      m_transcriptionLabel(new QLabel(this)),
+      m_transcribeButton(new QPushButton("Transcribe Recording", this)),
+      m_hasApiKey(false)
 {
     // Set window properties
     setWindowTitle("Audio Recorder");
-    resize(400, 200);  // Set a reasonable initial size
+    resize(400, 320);  // Increased size to accommodate transcription UI
     
     // Basic UI setup
     auto central = new QWidget(this);
@@ -37,6 +46,12 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     layout->addWidget(m_statusLabel);
     layout->addWidget(m_volumeBar);
     layout->addWidget(m_volumeLabel);
+    
+    // Add transcription UI elements
+    setupTranscriptionUI();
+    layout->addSpacing(15);
+    layout->addWidget(m_transcriptionLabel);
+    layout->addWidget(m_transcribeButton);
 
     setCentralWidget(central);
 
@@ -50,6 +65,7 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     setPalette(pal);
     m_statusLabel->setPalette(pal);
     m_volumeLabel->setPalette(pal);
+    m_transcriptionLabel->setPalette(pal);
     
     // Set status text style to be bold and larger with distinctive color
     m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #5CAAFF;");
@@ -63,11 +79,34 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     connect(m_recorder, &AudioRecorder::recordingStopped, this, &MainWindow::onRecordingStopped);
     connect(m_recorder, &AudioRecorder::recordingStarted, this, &MainWindow::onRecordingStarted);
     connect(m_recorder, &AudioRecorder::audioDeviceReady, this, &MainWindow::onAudioDeviceReady);
+    
+    // Connect transcription signals
+    connect(m_transcribeButton, &QPushButton::clicked, this, &MainWindow::onTranscribeButtonClicked);
+    connect(m_transcriptionService, &TranscriptionService::transcriptionCompleted, 
+            this, &MainWindow::onTranscriptionCompleted);
+    connect(m_transcriptionService, &TranscriptionService::transcriptionFailed, 
+            this, &MainWindow::onTranscriptionFailed);
+    connect(m_transcriptionService, &TranscriptionService::transcriptionProgress, 
+            this, &MainWindow::onTranscriptionProgress);
 
     // Periodically update UI for elapsed time and file size
     m_updateTimer.setInterval(500); // 0.5 seconds
     connect(&m_updateTimer, &QTimer::timeout, this, &MainWindow::updateUI);
     m_updateTimer.start();
+    
+    // Check for API key
+    m_hasApiKey = m_transcriptionService->hasApiKey();
+    if (!m_hasApiKey) {
+        m_transcriptionLabel->setStyleSheet("color: #FF6B6B;");
+        m_transcriptionLabel->setText("NO API KEY - Set OPENAI_API_KEY environment variable");
+    }
+    
+    // Clean up any leftover transcription file
+    QFile leftoverTranscriptionFile(TRANSCRIPTION_OUTPUT_PATH);
+    if (leftoverTranscriptionFile.exists()) {
+        leftoverTranscriptionFile.remove();
+        qDebug() << "Removed leftover transcription file:" << TRANSCRIPTION_OUTPUT_PATH;
+    }
 }
 
 void MainWindow::updateUI()
@@ -227,6 +266,20 @@ void MainWindow::onRecordingStopped()
     m_statusLabel->setPalette(pal);
     m_volumeLabel->setPalette(pal);
     
+    // Enable transcription button if we have a valid recording and API key
+    QFile recordingFile(OUTPUT_FILE_PATH);
+    if (recordingFile.exists() && m_hasApiKey) {
+        m_transcribeButton->setEnabled(true);
+        m_transcriptionLabel->setText("Ready to transcribe recording");
+        m_transcriptionLabel->setStyleSheet("color: #4CFF64;");
+    } else if (!m_hasApiKey) {
+        m_transcriptionLabel->setText("NO API KEY - Transcription unavailable");
+        m_transcriptionLabel->setStyleSheet("color: #FF6B6B;");
+    } else {
+        m_transcriptionLabel->setText("Recording file not found");
+        m_transcriptionLabel->setStyleSheet("color: #FF6B6B;");
+    }
+    
     // Add a note about pressing Esc or Enter/Space to close
     QTimer::singleShot(1000, this, [this]() {
         m_volumeLabel->setText("Press Enter/Space to save and exit, or Esc to cancel");
@@ -271,11 +324,22 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
         // Stop recording
         m_recorder->stopRecording();
         
-        // Remove the output file
+        // Cancel transcription if in progress
+        if (m_transcriptionService && m_transcriptionService->isTranscribing()) {
+            m_transcriptionService->cancelTranscription();
+        }
+        
+        // Remove the output files
         QFile outputFile(OUTPUT_FILE_PATH);
         if (outputFile.exists()) {
             outputFile.remove();
             qInfo() << "[INFO] Output file removed:" << OUTPUT_FILE_PATH;
+        }
+        
+        QFile transcriptionFile(TRANSCRIPTION_OUTPUT_PATH);
+        if (transcriptionFile.exists()) {
+            transcriptionFile.remove();
+            qInfo() << "[INFO] Transcription file removed:" << TRANSCRIPTION_OUTPUT_PATH;
         }
         
         // Update UI
@@ -302,4 +366,91 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
     else {
         QMainWindow::keyPressEvent(event);
     }
+}
+
+void MainWindow::setupTranscriptionUI()
+{
+    // Configure transcription button
+    m_transcribeButton->setEnabled(false);
+    m_transcribeButton->setStyleSheet("QPushButton { "
+                                     "  background-color: #4CAF50; "
+                                     "  color: white; "
+                                     "  padding: 8px; "
+                                     "  border: none; "
+                                     "  border-radius: 4px; "
+                                     "} "
+                                     "QPushButton:disabled { "
+                                     "  background-color: #777777; "
+                                     "} "
+                                     "QPushButton:hover:!disabled { "
+                                     "  background-color: #45a049; "
+                                     "}");
+    
+    // Configure transcription status label
+    m_transcriptionLabel->setStyleSheet("font-size: 10pt;");
+    m_transcriptionLabel->setText("Complete recording to enable transcription");
+    m_transcriptionLabel->setAlignment(Qt::AlignCenter);
+}
+
+void MainWindow::onTranscribeButtonClicked()
+{
+    if (!m_transcriptionService) return;
+    
+    // Check if the recording file exists
+    QFile recordingFile(OUTPUT_FILE_PATH);
+    if (!recordingFile.exists()) {
+        m_transcriptionLabel->setText("Error: Recording file not found");
+        m_transcriptionLabel->setStyleSheet("color: #FF6B6B;");
+        return;
+    }
+    
+    // Start the transcription process
+    m_transcribeButton->setEnabled(false);
+    m_transcriptionLabel->setStyleSheet("color: #5CAAFF;");
+    m_transcriptionLabel->setText("Starting transcription process...");
+    
+    m_transcriptionService->transcribeAudio(OUTPUT_FILE_PATH);
+}
+
+void MainWindow::onTranscriptionCompleted(const QString& transcribedText)
+{
+    // Update UI with success message
+    m_transcriptionLabel->setStyleSheet("color: #4CFF64;");
+    
+    // Truncate the text if too long for display
+    QString displayText = transcribedText;
+    if (displayText.length() > 100) {
+        displayText = displayText.left(97) + "...";
+    }
+    
+    m_transcriptionLabel->setText(QString("Transcription complete: \"%1\"").arg(displayText));
+    
+    // Re-enable the transcribe button
+    m_transcribeButton->setEnabled(true);
+    
+    // Show a dialog with the full text
+    QMessageBox msgBox;
+    msgBox.setWindowTitle("Transcription Complete");
+    msgBox.setText("Speech transcription completed successfully.");
+    msgBox.setDetailedText(transcribedText);
+    msgBox.setStandardButtons(QMessageBox::Ok);
+    msgBox.setDefaultButton(QMessageBox::Ok);
+    msgBox.exec();
+}
+
+void MainWindow::onTranscriptionFailed(const QString& errorMessage)
+{
+    // Update UI with error message
+    m_transcriptionLabel->setStyleSheet("color: #FF6B6B;");
+    m_transcriptionLabel->setText(QString("Transcription failed: %1").arg(errorMessage));
+    
+    // Re-enable the transcribe button
+    m_transcribeButton->setEnabled(true);
+}
+
+void MainWindow::onTranscriptionProgress(const QString& status)
+{
+    // Update UI with progress status
+    m_transcriptionLabel->setStyleSheet("color: #5CAAFF;");
+    m_transcriptionLabel->setText(status);
 }
