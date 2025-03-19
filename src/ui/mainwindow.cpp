@@ -55,7 +55,7 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #5CAAFF;");
     
     // Show initializing state immediately
-    m_statusLabel->setText("Initializing... (Press Enter to save, Esc to cancel)");
+    m_statusLabel->setText("Initializing... (Press Enter/Space to save, Esc to cancel)");
     m_volumeLabel->setText("Starting audio device...");
 
     // Connect signals from recorder
@@ -227,9 +227,9 @@ void MainWindow::onRecordingStopped()
     m_statusLabel->setPalette(pal);
     m_volumeLabel->setPalette(pal);
     
-    // Add a note about pressing Esc or Enter to close
+    // Add a note about pressing Esc or Enter/Space to close
     QTimer::singleShot(1000, this, [this]() {
-        m_volumeLabel->setText("Press Enter to save and exit, or Esc to cancel");
+        m_volumeLabel->setText("Press Enter/Space to save and exit, or Esc to cancel");
     });
 }
 
@@ -243,7 +243,7 @@ void MainWindow::onRecordingStarted()
 void MainWindow::onAudioDeviceReady()
 {
     // Update UI when audio device is fully ready and recording is actually happening
-    m_statusLabel->setText("Recording in progress... (Press Enter to save, Esc to cancel)");
+    m_statusLabel->setText("Recording in progress... (Press Enter/Space to save, Esc to cancel)");
     m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #4CFF64;");
     m_volumeLabel->setText("Audio device ready - recording in progress");
     
@@ -287,9 +287,9 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
             QApplication::quit();
         });
     }
-    else if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
-        // Enter key pressed - stop recording, save the file, and exit
-        qInfo() << "[INFO] Enter key pressed - stopping recording and saving";
+    else if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter || event->key() == Qt::Key_Space) {
+        // Enter or Space key pressed - stop recording, save the file, and exit
+        qInfo() << "[INFO] Enter/Space key pressed - stopping recording and saving";
         
         // Stop recording
         m_recorder->stopRecording();
