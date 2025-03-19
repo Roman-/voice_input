@@ -39,22 +39,25 @@ private slots:
         QVERIFY(fileInfo.size() > 0);
         qDebug() << "Generated file size:" << fileInfo.size() << "bytes";
         
-        // Check if file has valid AAC/M4A structure
+        // Check if file has valid MP3 structure
         QFile file(OUTPUT_FILE_PATH);
         QVERIFY(file.open(QIODevice::ReadOnly));
         
-        // Read the first bytes to check for AAC/ADTS signature
-        QByteArray header = file.read(8);
+        // Read the first bytes to check for MP3 signature
+        QByteArray header = file.read(4);
         file.close();
         
-        // ADTS files start with 0xFFF...
-        if (header.size() >= 2) {
+        // MP3 files typically start with ID3 tag or MP3 frame
+        if (header.size() >= 3) {
+            // Check for ID3 tag
+            bool hasID3Header = (header[0] == 'I' && header[1] == 'D' && header[2] == '3');
+            
+            // Check for MP3 frame header (first byte is 0xFF and second byte's MSB is 1)
             quint8 byte1 = static_cast<quint8>(header[0]);
             quint8 byte2 = static_cast<quint8>(header[1]);
+            bool hasMP3FrameHeader = (byte1 == 0xFF) && ((byte2 & 0xE0) == 0xE0);
             
-            // Check for ADTS sync word (0xFFF)
-            bool hasADTSHeader = (byte1 == 0xFF) && ((byte2 & 0xF0) == 0xF0);
-            QVERIFY2(hasADTSHeader, "File doesn't have valid ADTS header");
+            QVERIFY2(hasID3Header || hasMP3FrameHeader, "File doesn't have valid MP3 header");
         } else {
             QFAIL("File too small to have valid header");
         }

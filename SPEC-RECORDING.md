@@ -24,13 +24,13 @@ make -j16
 3. **Verify Recorded File**:
    ```bash
    # Check file format
-   file /tmp/audio_recording.m4a  # Should show: "MPEG ADTS, AAC, v4 LC, 44.1 kHz, monaural"
+   file /tmp/audio_recording.mp3  # Should show: "MPEG MPEG-1 Audio Layer 3, mono, 44.1 kHz"
    
    # Play recorded file
-   vlc /tmp/audio_recording.m4a
+   vlc /tmp/audio_recording.mp3
 
    # View file details
-   hexdump -C /tmp/audio_recording.m4a | head -20  # Should start with FF F1 (ADTS header)
+   hexdump -C /tmp/audio_recording.mp3 | head -20  # Should start with FF (MP3 frame sync or ID3 tag)
    ```
 
 ## Checking User Interface Performance
@@ -41,7 +41,7 @@ make -j16
    - Press **Esc** to cancel recording (deletes file) and exit
 
 ## Key Improvements Verification
-1. **AAC Encoding**: The output file should be a valid AAC file in ADTS format
+1. **MP3 Encoding**: The output file should be a valid MP3 file format
 2. **Instant UI**: Interface should appear instantly, with audio initialization happening in background
 3. **Keyboard Controls**: Enter and Escape keys should properly save/cancel recordings
 4. **Error Handling**: Check logs for proper initialization and finalization messages
@@ -49,7 +49,7 @@ make -j16
 # **Audio Recorder Application (C++/Qt) – Requirements & Specifications**
 
 ## **Overview**
-The **Audio Recorder Application** captures audio from the microphone and saves it as an **AAC-encoded file**. It is built using **C++ and Qt 5**, prioritizing **instant launch, low overhead, structured design, and flexibility**.  
+The **Audio Recorder Application** captures audio from the microphone and saves it as an **MP3-encoded file**. It is built using **C++ and Qt 5**, prioritizing **instant launch, low overhead, structured design, and flexibility**.  
 Instead of relying on **FFmpeg**, the application uses **PortAudio or RtAudio** for **direct audio capture**, allowing **low-latency recording, real-time UI feedback, and precise control** over the process.
 
 ---
@@ -60,7 +60,7 @@ Instead of relying on **FFmpeg**, the application uses **PortAudio or RtAudio** 
 - **Dependencies**:
     - **Qt 5** for GUI and process management.
     - **PortAudio or RtAudio** for real-time audio capture.
-    - **libfdk-aac** or an equivalent **AAC encoding library**.
+    - **libmp3lame** for MP3 encoding.
     - **C++ compiler** (CMake/qmake).
 
 ---
@@ -88,17 +88,17 @@ Instead of relying on **FFmpeg**, the application uses **PortAudio or RtAudio** 
       #ifndef CONFIG_H
       #define CONFIG_H
   
-      constexpr auto OUTPUT_FILE_PATH = "/tmp/audio_recording.m4a";
+      constexpr auto OUTPUT_FILE_PATH = "/tmp/audio_recording.mp3";
       constexpr int DEFAULT_TIMEOUT = 0;  // Default: no timeout
       constexpr int SAMPLE_RATE = 44100;  // Standard CD-quality sample rate
       constexpr int NUM_CHANNELS = 1;     // Mono recording
-      constexpr int ENCODER_BITRATE = 128000; // 128 kbps AAC encoding
+      constexpr int ENCODER_BITRATE = 128000; // 128 kbps MP3 encoding
   
       #endif // CONFIG_H
       ```
 
 - **File Cleanup**:
-    - On **startup**, any leftover `/tmp/audio_recording.m4a` should be removed.
+    - On **startup**, any leftover `/tmp/audio_recording.mp3` should be removed.
     - **On exit**, the program does **not** remove any files—just gracefully stops the recording process.
 
 - **Real-time UI Feedback**:
@@ -118,7 +118,7 @@ Instead of relying on **FFmpeg**, the application uses **PortAudio or RtAudio** 
       [INFO] Application started  
       [DEBUG] Initializing audio capture  
       [DEBUG] PortAudio stream opened successfully  
-      [INFO] Recording started: /tmp/audio_recording.m4a  
+      [INFO] Recording started: /tmp/audio_recording.mp3  
       [INFO] Recording stopped, file saved successfully  
       [ERROR] Audio device unavailable!  
       ```

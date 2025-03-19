@@ -1,12 +1,12 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-constexpr auto OUTPUT_FILE_PATH = "/tmp/audio_recording.m4a";
+constexpr auto OUTPUT_FILE_PATH = "/tmp/audio_recording.mp3";
 constexpr auto TRANSCRIPTION_OUTPUT_PATH = "/tmp/voice_input.txt";
 constexpr int DEFAULT_TIMEOUT = 0;           // No timeout by default
 constexpr int SAMPLE_RATE = 44100;           // CD-quality sample rate
 constexpr int NUM_CHANNELS = 1;              // Mono
-constexpr int ENCODER_BITRATE = 128000;      // 128 kbps AAC (conceptual)
+constexpr int ENCODER_BITRATE = 128000;      // 128 kbps MP3 encoding
 
 // Volume Visualization Settings
 constexpr float VOLUME_SCALING_FACTOR = 5.0f;  // Amplify volume for better visualization

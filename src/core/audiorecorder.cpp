@@ -11,10 +11,10 @@ AudioRecorder::AudioRecorder(QObject* parent)
       m_isRecording(false),
       m_audioDeviceInitialized(false),
       m_currentVolume(0.0f),
-      m_aacEncoder(nullptr),
-      m_aacInitialized(false)
+      m_lameGlobal(nullptr),
+      m_mp3Initialized(false)
 {
-    // Initialize data buffer for MP4 processing
+    // Initialize data buffer for MP3 processing
     m_encodedData.reserve(1024 * 1024); // Pre-allocate 1MB
     m_dataBuffer.setBuffer(&m_encodedData);
     m_dataBuffer.open(QIODevice::ReadWrite);
@@ -24,7 +24,7 @@ AudioRecorder::~AudioRecorder()
 {
     stopRecording();
     finalizePortAudio();
-    finalizeAACEncoder();
+    finalizeMP3Encoder();
 }
 
 bool AudioRecorder::startRecording()
@@ -42,16 +42,9 @@ bool AudioRecorder::startRecording()
     m_encodedData.clear();
     m_dataBuffer.seek(0);
     
-    // Initialize AAC encoder
-    if (!initializeAACEncoder()) {
-        qCritical() << "Failed to initialize AAC encoder";
-        m_outputFile.close();
-        return false;
-    }
-    
-    // Write MP4 header
-    if (!writeMP4Header()) {
-        qCritical() << "Failed to write MP4 header";
+    // Initialize MP3 encoder
+    if (!initializeMP3Encoder()) {
+        qCritical() << "Failed to initialize MP3 encoder";
         m_outputFile.close();
         return false;
     }
@@ -100,19 +93,16 @@ void AudioRecorder::stopRecording()
         m_stream = nullptr;
     }
 
-    // Finalize AAC encoding and MP4 file
-    if (m_aacInitialized) {
+    // Finalize MP3 encoding
+    if (m_mp3Initialized) {
         // Flush encoder
-        QByteArray finalData = encodeToAAC(nullptr, 0);
+        QByteArray finalData = encodeToMP3(nullptr, 0);
         if (!finalData.isEmpty()) {
             m_outputFile.write(finalData);
         }
         
-        // Finalize MP4 container
-        finalizeMP4File();
-        
         // Clean up encoder
-        finalizeAACEncoder();
+        finalizeMP3Encoder();
     }
 
     // Close output file
@@ -147,163 +137,98 @@ qint64 AudioRecorder::elapsedMs() const
     return m_elapsedTimer.elapsed();
 }
 
-bool AudioRecorder::initializeAACEncoder()
+bool AudioRecorder::initializeMP3Encoder()
 {
-    qDebug() << "Initializing AAC encoder";
+    qDebug() << "Initializing MP3 encoder";
 
     // Clean up any existing encoder
-    finalizeAACEncoder();
+    finalizeMP3Encoder();
 
     // Create encoder instance
-    AACENC_ERROR err = aacEncOpen(&m_aacEncoder, 0, NUM_CHANNELS);
-    if (err != AACENC_OK) {
-        qCritical() << "Failed to open AAC encoder:" << err;
+    m_lameGlobal = lame_init();
+    if (!m_lameGlobal) {
+        qCritical() << "Failed to initialize LAME MP3 encoder";
         return false;
     }
 
     // Set encoder parameters
-    int aot = AOT_AAC_LC;                         // AAC Low Complexity profile
-    int sampleRate = SAMPLE_RATE;
-    int channelMode = MODE_1;                     // Mono
-    int bitrate = ENCODER_BITRATE;                // From config.h
-    int afterburner = 1;                          // Quality boost
-    int signaling = 0;                            // Implicit signaling
-
-    // Configure the encoder
-    if ((err = aacEncoder_SetParam(m_aacEncoder, AACENC_AOT, aot)) != AACENC_OK) {
-        qCritical() << "Unable to set AOT:" << err;
-        aacEncClose(&m_aacEncoder);
-        return false;
-    }
-    if ((err = aacEncoder_SetParam(m_aacEncoder, AACENC_SAMPLERATE, sampleRate)) != AACENC_OK) {
-        qCritical() << "Unable to set sample rate:" << err;
-        aacEncClose(&m_aacEncoder);
-        return false;
-    }
-    if ((err = aacEncoder_SetParam(m_aacEncoder, AACENC_CHANNELMODE, channelMode)) != AACENC_OK) {
-        qCritical() << "Unable to set channel mode:" << err;
-        aacEncClose(&m_aacEncoder);
-        return false;
-    }
-    if ((err = aacEncoder_SetParam(m_aacEncoder, AACENC_BITRATE, bitrate)) != AACENC_OK) {
-        qCritical() << "Unable to set bitrate:" << err;
-        aacEncClose(&m_aacEncoder);
-        return false;
-    }
-    if ((err = aacEncoder_SetParam(m_aacEncoder, AACENC_AFTERBURNER, afterburner)) != AACENC_OK) {
-        qCritical() << "Unable to set afterburner:" << err;
-        aacEncClose(&m_aacEncoder);
-        return false;
-    }
-    if ((err = aacEncoder_SetParam(m_aacEncoder, AACENC_SIGNALING_MODE, signaling)) != AACENC_OK) {
-        qCritical() << "Unable to set signaling mode:" << err;
-        aacEncClose(&m_aacEncoder);
-        return false;
-    }
-    if ((err = aacEncoder_SetParam(m_aacEncoder, AACENC_TRANSMUX, TT_MP4_ADTS)) != AACENC_OK) {
-        qCritical() << "Unable to set transmux:" << err;
-        aacEncClose(&m_aacEncoder);
-        return false;
-    }
-
-    // Initialize encoder
-    if ((err = aacEncEncode(m_aacEncoder, NULL, NULL, NULL, NULL)) != AACENC_OK) {
-        qCritical() << "Unable to initialize encoder:" << err;
-        aacEncClose(&m_aacEncoder);
-        return false;
-    }
-
-    m_aacInitialized = true;
-    qDebug() << "AAC encoder initialized successfully";
-    return true;
-}
-
-void AudioRecorder::finalizeAACEncoder()
-{
-    if (m_aacEncoder) {
-        aacEncClose(&m_aacEncoder);
-        m_aacEncoder = nullptr;
-    }
-    m_aacInitialized = false;
-}
-
-bool AudioRecorder::writeMP4Header()
-{
-    // Simple ADTS header for MP4 file
-    // The ADTS format adds its own header to each AAC frame
-    // This isn't a full MP4 header, but it makes the file playable with most players
+    lame_set_num_channels(m_lameGlobal, NUM_CHANNELS);
+    lame_set_in_samplerate(m_lameGlobal, SAMPLE_RATE);
+    lame_set_brate(m_lameGlobal, ENCODER_BITRATE / 1000); // LAME uses kbps
+    lame_set_quality(m_lameGlobal, 2); // 0=best, 9=worst
+    lame_set_mode(m_lameGlobal, NUM_CHANNELS == 1 ? MONO : STEREO);
     
-    qDebug() << "Writing MP4 header";
+    // Initialize the encoder
+    if (lame_init_params(m_lameGlobal) < 0) {
+        qCritical() << "Failed to initialize LAME parameters";
+        lame_close(m_lameGlobal);
+        m_lameGlobal = nullptr;
+        return false;
+    }
+
+    m_mp3Initialized = true;
+    qDebug() << "MP3 encoder initialized successfully";
     return true;
 }
 
-bool AudioRecorder::finalizeMP4File()
+void AudioRecorder::finalizeMP3Encoder()
 {
-    // For a proper MP4 file, we'd need to update various fields in the file
-    // For simplicity, we're using ADTS which embeds headers in each frame
-    qDebug() << "Finalizing MP4 file";
-    return true;
+    if (m_lameGlobal) {
+        lame_close(m_lameGlobal);
+        m_lameGlobal = nullptr;
+    }
+    m_mp3Initialized = false;
 }
 
-QByteArray AudioRecorder::encodeToAAC(const short* inputBuffer, int inputSize)
+QByteArray AudioRecorder::encodeToMP3(const short* inputBuffer, int inputSize)
 {
-    if (!m_aacInitialized) {
+    if (!m_mp3Initialized) {
         return QByteArray();
     }
 
     QByteArray result;
-
-    // Prepare in/out buffers
-    AACENC_BufDesc inBufDesc = { 0 };
-    AACENC_BufDesc outBufDesc = { 0 };
-    AACENC_InArgs inArgs = { 0 };
-    AACENC_OutArgs outArgs = { 0 };
-
-    // Input buffer
-    void* inPtr = (void*)inputBuffer;
-    INT inSize = inputSize;
-    INT inIdentifier = IN_AUDIO_DATA;
-    INT inElemSize = sizeof(short);
-
-    inBufDesc.numBufs = 1;
-    inBufDesc.bufs = &inPtr;
-    inBufDesc.bufferIdentifiers = &inIdentifier;
-    inBufDesc.bufSizes = &inSize;
-    inBufDesc.bufElSizes = &inElemSize;
-
-    // Output buffer
-    int outSize = 8192; // Should be enough for the encoded output
-    result.resize(outSize);
-    void* outPtr = result.data();
-    INT outIdentifier = OUT_BITSTREAM_DATA;
-    INT outElemSize = 1;
-
-    outBufDesc.numBufs = 1;
-    outBufDesc.bufs = &outPtr;
-    outBufDesc.bufferIdentifiers = &outIdentifier;
-    outBufDesc.bufSizes = &outSize;
-    outBufDesc.bufElSizes = &outElemSize;
-
-    // Encoding arguments
+    int numSamples = 0;
+    
     if (inputBuffer) {
-        // For audio data
-        inArgs.numInSamples = inputSize / sizeof(short);
+        // Regular encoding
+        numSamples = inputSize / sizeof(short);
     } else {
-        // For flush
-        inArgs.numInSamples = -1;
+        // Flush encoder (end of stream)
+        numSamples = 0;
     }
 
-    // Encode
-    AACENC_ERROR err = aacEncEncode(m_aacEncoder, &inBufDesc, &outBufDesc, &inArgs, &outArgs);
-    if (err != AACENC_OK) {
-        if (err != AACENC_ENCODE_EOF) {
-            qWarning() << "AAC encoding error:" << err;
-        }
+    // MP3 buffer needs to be 1.25x + 7200 bytes larger than the PCM data
+    int mp3BufferSize = numSamples * 1.25 + 7200;
+    result.resize(mp3BufferSize);
+    
+    int bytesEncoded = 0;
+    
+    if (numSamples > 0) {
+        // Encode audio samples
+        bytesEncoded = lame_encode_buffer(
+            m_lameGlobal,
+            inputBuffer,      // left channel (mono = only channel)
+            nullptr,          // right channel (unused for mono)
+            numSamples,
+            reinterpret_cast<unsigned char*>(result.data()),
+            result.size()
+        );
+    } else {
+        // Flush remaining MP3 data
+        bytesEncoded = lame_encode_flush(
+            m_lameGlobal,
+            reinterpret_cast<unsigned char*>(result.data()),
+            result.size()
+        );
+    }
+    
+    if (bytesEncoded < 0) {
+        qWarning() << "MP3 encoding error:" << bytesEncoded;
         return QByteArray();
     }
-
-    // Resize result to the actual output size
-    result.resize(outArgs.numOutBytes);
+    
+    // Resize to actual encoded size
+    result.resize(bytesEncoded);
     return result;
 }
 
@@ -434,8 +359,8 @@ void AudioRecorder::handleAudioData(const void* inputBuffer, unsigned long frame
     }
 
     // Encode and write audio data if encoder is ready
-    if (m_aacInitialized) {
-        QByteArray encodedData = encodeToAAC(buffer, frames * sizeof(short));
+    if (m_mp3Initialized) {
+        QByteArray encodedData = encodeToMP3(buffer, frames * sizeof(short));
         if (!encodedData.isEmpty()) {
             m_outputFile.write(encodedData);
         }

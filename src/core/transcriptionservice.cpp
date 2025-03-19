@@ -55,6 +55,11 @@ void TranscriptionService::transcribeAudio(const QString& audioFilePath)
     QFileInfo fileInfo(audioFilePath);
     qDebug() << "File extension:" << fileInfo.suffix();
     
+    // Verify it's an MP3 file
+    if (fileInfo.suffix().toLower() != "mp3") {
+        qWarning() << "Warning: File extension is not mp3, may not be recognized by the API";
+    }
+    
     // Create a file object that will be owned by the multipart
     QFile* audioFilePtr = new QFile(audioFilePath);
     if (!audioFilePtr->open(QIODevice::ReadOnly)) {

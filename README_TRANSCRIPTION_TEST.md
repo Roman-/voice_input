@@ -57,13 +57,13 @@ If you're having issues with your audio file format, you can convert it to a com
 
 ```bash
 # Convert any audio file to MP4 format supported by Whisper API
-ffmpeg -i your_input_file.m4a -c:a aac -f mp4 hello_world_fixed.mp4
+ffmpeg -i your_input_file.mp3 -c:a aac -f mp4 hello_world_fixed.mp4
 
-# If your original file is in AAC ADTS format, you need to convert it to MP4 container
-ffmpeg -i hello_world.m4a -c:a aac -f mp4 hello_world_fixed.mp4
+# If your original file is in MP3 format, you need to convert it to MP4 container
+ffmpeg -i hello_world.mp3 -c:a aac -f mp4 hello_world_fixed.mp4
 ```
 
 Common issues with audio files:
-- Raw AAC files with ADTS headers (often with .m4a extension) may not be recognized by the API
+- Raw MP3 files may not be recognized by the API in some cases
 - Files must have proper container formats (MP4, MP3, etc.) not just the raw audio data
 - The Whisper API requires specific formats listed in their documentation

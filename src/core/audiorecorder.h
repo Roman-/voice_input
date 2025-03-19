@@ -9,7 +9,7 @@
 #include <QtConcurrent>
 #include <QBuffer>
 #include <portaudio.h>
-#include <fdk-aac/aacenc_lib.h>
+#include <lame/lame.h>
 
 class AudioRecorder : public QObject
 {
@@ -35,11 +35,9 @@ signals:
 private:
     bool initializePortAudio();
     void finalizePortAudio();
-    bool initializeAACEncoder();
-    void finalizeAACEncoder();
-    bool writeMP4Header();
-    bool finalizeMP4File();
-    QByteArray encodeToAAC(const short* inputBuffer, int inputSize);
+    bool initializeMP3Encoder();
+    void finalizeMP3Encoder();
+    QByteArray encodeToMP3(const short* inputBuffer, int inputSize);
 
     static int audioCallback( const void *inputBuffer,
                               void *outputBuffer,
@@ -65,11 +63,11 @@ private:
     float           m_currentVolume;
     QFuture<void>   m_initFuture;
     
-    // AAC encoding
-    HANDLE_AACENCODER   m_aacEncoder;
-    bool                m_aacInitialized;
-    QByteArray          m_encodedData;
-    QBuffer             m_dataBuffer; // For intermediate processing
+    // MP3 encoding
+    lame_global_flags* m_lameGlobal;
+    bool               m_mp3Initialized;
+    QByteArray         m_encodedData;
+    QBuffer            m_dataBuffer; // For intermediate processing
 };
 
 #endif // AUDIORECORDER_H

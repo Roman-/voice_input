@@ -6,15 +6,22 @@ set(CMAKE_CXX_STANDARD 17)
 # Find Qt5 (adjust if you have Qt6)
 find_package(Qt5 COMPONENTS Core Widgets Test Concurrent Network REQUIRED)
 
-# Find PortAudio and libfdk-aac
+# Find PortAudio (using pkg-config)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(PORTAUDIO REQUIRED portaudio-2.0)
-pkg_check_modules(FDK_AAC REQUIRED fdk-aac)
+
+# For LAME MP3 library, we'll use a direct approach
+find_path(LAME_INCLUDE_DIR lame/lame.h)
+find_library(LAME_LIBRARY mp3lame)
+
+if(NOT LAME_INCLUDE_DIR OR NOT LAME_LIBRARY)
+    message(FATAL_ERROR "LAME library not found. Please install libmp3lame-dev.")
+endif()
 
 # Include directories
 include_directories(
     ${PORTAUDIO_INCLUDE_DIRS}
-    ${FDK_AAC_INCLUDE_DIRS}
+    ${LAME_INCLUDE_DIR}
     src
     src/config
 )
@@ -40,7 +47,7 @@ target_link_libraries(audio_recorder
     Qt5::Concurrent
     Qt5::Network
     ${PORTAUDIO_LIBRARIES}
-    ${FDK_AAC_LIBRARIES}
+    ${LAME_LIBRARY}
 )
 
 # Add test executables
@@ -67,7 +74,7 @@ target_link_libraries(test_recorder
     Qt5::Concurrent
     Qt5::Network
     ${PORTAUDIO_LIBRARIES}
-    ${FDK_AAC_LIBRARIES}
+    ${LAME_LIBRARY}
 )
 
 target_link_libraries(test_file_verification
@@ -76,7 +83,7 @@ target_link_libraries(test_file_verification
     Qt5::Concurrent
     Qt5::Network
     ${PORTAUDIO_LIBRARIES}
-    ${FDK_AAC_LIBRARIES}
+    ${LAME_LIBRARY}
 )
 
 # No mock mode needed, using real API
