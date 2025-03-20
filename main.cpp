@@ -26,7 +26,9 @@ static void signalHandler(int sig)
         g_mainWindow->cancelTranscription();
     }
     
-    QCoreApplication::quit();
+    // Use the canceled exit code for signal interruptions
+    qInfo() << "Setting application exit code to:" << APP_EXIT_FAILURE_CANCELED << "(CANCELED)";
+    exit(APP_EXIT_FAILURE_CANCELED);
 }
 
 int main(int argc, char *argv[])
@@ -80,6 +82,12 @@ int main(int argc, char *argv[])
     // Connect aboutToQuit for graceful cleanup
     QObject::connect(&app, &QCoreApplication::aboutToQuit, [&](){
         recorder.stopRecording();
+        
+        // Set the application exit code based on MainWindow's exit code
+        if (g_mainWindow) {
+            qInfo() << "Setting application exit code to:" << g_mainWindow->exitCode();
+            app.exit(g_mainWindow->exitCode());
+        }
     });
 
     // Create and prepare recorder immediately
@@ -97,7 +105,7 @@ int main(int argc, char *argv[])
             qInfo() << "[INFO] Timeout reached:" << timeoutMs << "ms";
             recorder.stopRecording();
             // Don't quit - let the transcription process complete
-            // QApplication::quit() will be called after transcription
+            // QApplication::exit() will be called after transcription with the appropriate exit code
         });
     }
 

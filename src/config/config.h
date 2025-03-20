@@ -13,4 +13,12 @@ constexpr float VOLUME_SCALING_FACTOR = 5.0f;  // Amplify volume for better visu
 constexpr float VOLUME_LOG_BASE = 20.0f;       // Higher values make small sounds more visible
 constexpr float VOLUME_MIN_THRESHOLD = 0.001f; // Minimum volume to register any display
 
+// Exit Codes
+constexpr int APP_EXIT_SUCCESS = 0;             // Successful transcription
+constexpr int APP_EXIT_FAILURE_GENERAL = 1;     // General failure
+constexpr int APP_EXIT_FAILURE_NO_API_KEY = 2;  // No API key provided
+constexpr int APP_EXIT_FAILURE_API_ERROR = 3;   // API returned an error
+constexpr int APP_EXIT_FAILURE_CANCELED = 4;    // User canceled operation
+constexpr int APP_EXIT_FAILURE_FILE_ERROR = 5;  // File I/O error
+
 #endif // CONFIG_H

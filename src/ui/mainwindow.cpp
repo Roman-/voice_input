@@ -25,7 +25,8 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
       m_volumeLabel(new QLabel(this)),
       m_transcriptionLabel(new QLabel(this)),
       m_transcribeButton(new QPushButton(this)),
-      m_hasApiKey(false)
+      m_hasApiKey(false),
+      m_exitCode(APP_EXIT_FAILURE_GENERAL) // Default to failure exit code until successful transcription
 {
     // Set window properties
     setWindowTitle("Audio Recorder");
@@ -35,6 +36,11 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     auto central = new QWidget(this);
     auto layout = new QVBoxLayout(central);
 
+    // Configure all labels to be center-aligned
+    m_statusLabel->setAlignment(Qt::AlignCenter);
+    m_volumeLabel->setAlignment(Qt::AlignCenter);
+    m_transcriptionLabel->setAlignment(Qt::AlignCenter);
+    
     m_statusLabel->setText("Starting...");
     m_volumeLabel->setText("Preparing to record...");
     
@@ -52,7 +58,13 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     setupTranscriptionUI();
     layout->addSpacing(15);
     layout->addWidget(m_transcriptionLabel);
-    layout->addWidget(m_transcribeButton);
+    
+    // Add button in a centered layout
+    auto buttonLayout = new QHBoxLayout();
+    buttonLayout->addStretch();
+    buttonLayout->addWidget(m_transcribeButton);
+    buttonLayout->addStretch();
+    layout->addLayout(buttonLayout);
 
     setCentralWidget(central);
 
@@ -114,8 +126,8 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     
     m_autoCloseTimer.setSingleShot(true);
     connect(&m_autoCloseTimer, &QTimer::timeout, this, [this]() {
-        qInfo() << "Auto-closing application after error";
-        QApplication::quit();
+        qInfo() << "Auto-closing application after error with exit code:" << m_exitCode;
+        QApplication::exit(m_exitCode);
     });
     
     // Clean up any leftover transcription file
@@ -363,6 +375,10 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
         // Escape key pressed - cancel recording and exit without saving
         qInfo() << "[INFO] Escape key pressed - canceling recording";
         
+        // Set exit code for cancellation
+        m_exitCode = APP_EXIT_FAILURE_CANCELED;
+        qInfo() << "Exit code set to" << m_exitCode << "(CANCELED)";
+        
         // Stop recording
         m_recorder->stopRecording();
         
@@ -389,8 +405,8 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
         m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #FF6B6B;");
         
         // Wait briefly to show status, then quit application
-        QTimer::singleShot(500, []() {
-            QApplication::quit();
+        QTimer::singleShot(500, [this]() {
+            QApplication::exit(m_exitCode);
         });
     }
     else if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter || event->key() == Qt::Key_Space) {
@@ -411,8 +427,8 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
         }
         
         // If we're here, recording is stopped and transcription is done - ok to exit
-        qInfo() << "[INFO] Enter/Space key pressed - exiting application";
-        QApplication::quit();
+        qInfo() << "[INFO] Enter/Space key pressed - exiting application with code:" << m_exitCode;
+        QApplication::exit(m_exitCode);
     }
     else {
         QMainWindow::keyPressEvent(event);
@@ -441,7 +457,6 @@ void MainWindow::setupTranscriptionUI()
     // Configure transcription status label
     m_transcriptionLabel->setStyleSheet("font-size: 10pt;");
     m_transcriptionLabel->setText("Recording will be automatically transcribed when complete");
-    m_transcriptionLabel->setAlignment(Qt::AlignCenter);
 }
 
 void MainWindow::onTranscribeButtonClicked()
@@ -479,8 +494,15 @@ void MainWindow::onTranscribeButtonClicked()
 
 void MainWindow::onTranscriptionCompleted(const QString& transcribedText)
 {
-    // Update UI with success message
-    m_transcriptionLabel->setStyleSheet("color: #4CFF64;");
+    // Set exit code to success
+    m_exitCode = APP_EXIT_SUCCESS;
+    
+    // Update status label to show transcription complete rather than recording timer
+    m_statusLabel->setText("Transcription Completed Successfully");
+    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #4CFF64;");
+    
+    // Display just the transcribed text in green
+    m_transcriptionLabel->setStyleSheet("color: #4CFF64; font-size: 12pt; font-weight: bold;");
     
     // Truncate the text if too long for display
     QString displayText = transcribedText;
@@ -488,17 +510,15 @@ void MainWindow::onTranscriptionCompleted(const QString& transcribedText)
         displayText = displayText.left(97) + "...";
     }
     
-    // Update status label to show transcription complete rather than recording timer
-    m_statusLabel->setText("Transcription Completed Successfully");
-    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #4CFF64;");
-    
-    m_transcriptionLabel->setText(QString("Transcription complete: \"%1\"").arg(displayText));
+    // Show just the transcribed text without any prefix
+    m_transcriptionLabel->setText(displayText);
     
     // Hide the "Try Again" button as it's not needed after success
     m_transcribeButton->setVisible(false);
     
     // Log the transcription result to console
     qInfo() << "Transcription result:" << transcribedText;
+    qInfo() << "Exit code set to" << m_exitCode << "(SUCCESS)";
     
     // Show message that transcription is complete
     m_volumeLabel->setText("Transcription completed - Press Enter/Space to exit");
@@ -506,6 +526,19 @@ void MainWindow::onTranscriptionCompleted(const QString& transcribedText)
 
 void MainWindow::onTranscriptionFailed(const QString& errorMessage)
 {
+    // Set appropriate exit code based on the error
+    if (errorMessage.contains("API key", Qt::CaseInsensitive) || 
+        errorMessage.contains("authentication", Qt::CaseInsensitive)) {
+        m_exitCode = APP_EXIT_FAILURE_NO_API_KEY;
+        qWarning() << "Exit code set to" << m_exitCode << "(NO_API_KEY)";
+    } else if (errorMessage.contains("Network error", Qt::CaseInsensitive)) {
+        m_exitCode = APP_EXIT_FAILURE_API_ERROR;
+        qWarning() << "Exit code set to" << m_exitCode << "(API_ERROR)";
+    } else {
+        m_exitCode = APP_EXIT_FAILURE_GENERAL;
+        qWarning() << "Exit code set to" << m_exitCode << "(GENERAL_FAILURE)";
+    }
+    
     // Update UI with error message
     m_transcriptionLabel->setStyleSheet("color: #FF6B6B;");
     m_transcriptionLabel->setText(QString("Transcription failed: %1").arg(errorMessage));

@@ -20,6 +20,9 @@ public:
     
     // Cancel any ongoing transcription - used by signal handler
     void cancelTranscription();
+    
+    // Get the current exit code
+    int exitCode() const { return m_exitCode; }
 
 private slots:
     void updateUI();
@@ -56,6 +59,7 @@ private:
     bool           m_hasApiKey;
     QTimer         m_autoCloseTimer;
     int            m_autoCloseSeconds;
+    int            m_exitCode;  // Exit code to use when application terminates
 };
 
 #endif // MAINWINDOW_H
