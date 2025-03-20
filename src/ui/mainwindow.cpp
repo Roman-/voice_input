@@ -497,31 +497,15 @@ void MainWindow::onTranscriptionCompleted(const QString& transcribedText)
     // Set exit code to success
     m_exitCode = APP_EXIT_SUCCESS;
     
-    // Update status label to show transcription complete rather than recording timer
-    m_statusLabel->setText("Transcription Completed Successfully");
-    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #4CFF64;");
-    
-    // Display just the transcribed text in green
-    m_transcriptionLabel->setStyleSheet("color: #4CFF64; font-size: 12pt; font-weight: bold;");
-    
-    // Truncate the text if too long for display
-    QString displayText = transcribedText;
-    if (displayText.length() > 100) {
-        displayText = displayText.left(97) + "...";
-    }
-    
-    // Show just the transcribed text without any prefix
-    m_transcriptionLabel->setText(displayText);
-    
-    // Hide the "Try Again" button as it's not needed after success
-    m_transcribeButton->setVisible(false);
-    
     // Log the transcription result to console
     qInfo() << "Transcription result:" << transcribedText;
     qInfo() << "Exit code set to" << m_exitCode << "(SUCCESS)";
+    qInfo() << "Transcription completed successfully - exiting application";
     
-    // Show message that transcription is complete
-    m_volumeLabel->setText("Transcription completed - Press Enter/Space to exit");
+    // Short delay to allow logging to complete, then exit
+    QTimer::singleShot(100, [this]() {
+        QApplication::exit(m_exitCode);
+    });
 }
 
 void MainWindow::onTranscriptionFailed(const QString& errorMessage)
