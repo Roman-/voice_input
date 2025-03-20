@@ -50,7 +50,6 @@ private:
     AudioRecorder* m_recorder;
     TranscriptionService* m_transcriptionService;
     QLabel*        m_statusLabel;
-    QLabel*        m_volumeLabel;
     QLabel*        m_transcriptionLabel;
     QTimer         m_updateTimer;
     QWidget*       m_volumeBar;

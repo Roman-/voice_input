@@ -3,6 +3,7 @@
 
 constexpr auto OUTPUT_FILE_PATH = "/tmp/audio_recording.mp3";
 constexpr auto TRANSCRIPTION_OUTPUT_PATH = "/tmp/voice_input.txt";
+constexpr auto LOCK_FILE_PATH = "/tmp/voice_input_lock.pid";
 constexpr int DEFAULT_TIMEOUT = 0;           // No timeout by default
 constexpr int SAMPLE_RATE = 44100;           // CD-quality sample rate
 constexpr int NUM_CHANNELS = 1;              // Mono

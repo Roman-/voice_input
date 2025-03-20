@@ -22,7 +22,6 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
       m_recorder(recorder),
       m_transcriptionService(TranscriptionFactory::createTranscriptionService(this)),
       m_statusLabel(new QLabel(this)),
-      m_volumeLabel(new QLabel(this)),
       m_transcriptionLabel(new QLabel(this)),
       m_transcribeButton(new QPushButton(this)),
       m_hasApiKey(false),
@@ -38,11 +37,9 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
 
     // Configure all labels to be center-aligned
     m_statusLabel->setAlignment(Qt::AlignCenter);
-    m_volumeLabel->setAlignment(Qt::AlignCenter);
     m_transcriptionLabel->setAlignment(Qt::AlignCenter);
     
     m_statusLabel->setText("Starting...");
-    m_volumeLabel->setText("Preparing to record...");
     
     // Create volume meter
     m_volumeBar = new QWidget(this);
@@ -52,7 +49,6 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
 
     layout->addWidget(m_statusLabel);
     layout->addWidget(m_volumeBar);
-    layout->addWidget(m_volumeLabel);
     
     // Add transcription UI elements
     setupTranscriptionUI();
@@ -77,7 +73,6 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     // Apply palette to window and labels directly
     setPalette(pal);
     m_statusLabel->setPalette(pal);
-    m_volumeLabel->setPalette(pal);
     m_transcriptionLabel->setPalette(pal);
     
     // Set status text style to be bold and larger with distinctive color
@@ -85,7 +80,6 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     
     // Show initializing state immediately
     m_statusLabel->setText("Initializing... (Press Enter/Space to save, Esc to cancel)");
-    m_volumeLabel->setText("Starting audio device...");
 
     // Connect signals from recorder
     connect(m_recorder, &AudioRecorder::volumeChanged, this, &MainWindow::onVolumeChanged);
@@ -175,18 +169,14 @@ void MainWindow::onVolumeChanged(float volume)
     static bool firstVolume = true;
     if (firstVolume) {
         firstVolume = false;
-        m_volumeLabel->setText("Audio capture active");
+        m_statusLabel->setText("Recording in progress... (Press Enter/Space to save, Esc to cancel)");
         qInfo() << "First audio data received, volume:" << volume;
     }
-    
-    // Calculate percentage for display (more intuitive for users)
-    int volumePercentage = static_cast<int>(volume * 100.0f);
     
     // Only update if we have a significant volume level (reduces noise in display)
     static float lastVolume = 0.0f;
     if (qAbs(volume - lastVolume) > 0.005f) {
-        // Update volume display to show percentage
-        m_volumeLabel->setText(QString("Volume: %1%").arg(volumePercentage));
+        // Just update the volume bar without showing percentage text
         updateVolumeBar(volume);
         lastVolume = volume;
     }
@@ -296,7 +286,6 @@ void MainWindow::onRecordingStopped()
     pal.setColor(QPalette::Text, QColor(200, 200, 200));       // Light gray text for widgets
     setPalette(pal);
     m_statusLabel->setPalette(pal);
-    m_volumeLabel->setPalette(pal);
     
     // Check for valid recording and API key
     QFile recordingFile(OUTPUT_FILE_PATH);
@@ -308,8 +297,8 @@ void MainWindow::onRecordingStopped()
         // Make sure the button is hidden during auto-transcription
         m_transcribeButton->setVisible(false);
         
-        // Add a note about waiting for transcription
-        m_volumeLabel->setText("Please wait while transcription completes...");
+        // Update status for transcription
+        m_statusLabel->setText("Please wait while transcription completes...");
         
         // Slight delay to update UI before starting transcription
         QTimer::singleShot(500, this, [this]() {
@@ -322,9 +311,9 @@ void MainWindow::onRecordingStopped()
         // Hide the transcribe button since there's no API key
         m_transcribeButton->setVisible(false);
         
-        // Add a note about pressing Esc or Enter/Space to close
+        // Update status with instruction
         QTimer::singleShot(1000, this, [this]() {
-            m_volumeLabel->setText("Press Enter/Space to save and exit, or Esc to cancel");
+            m_statusLabel->setText("Press Enter/Space to save and exit, or Esc to cancel");
         });
     } else {
         m_transcriptionLabel->setText("Recording file not found");
@@ -333,9 +322,9 @@ void MainWindow::onRecordingStopped()
         // Hide the transcribe button since there's no recording file
         m_transcribeButton->setVisible(false);
         
-        // Add a note about pressing Esc or Enter/Space to close
+        // Update status with instruction
         QTimer::singleShot(1000, this, [this]() {
-            m_volumeLabel->setText("Press Enter/Space to save and exit, or Esc to cancel");
+            m_statusLabel->setText("Press Enter/Space to save and exit, or Esc to cancel");
         });
     }
 }
@@ -344,7 +333,6 @@ void MainWindow::onRecordingStarted()
 {
     // Update UI when recording initialization starts
     m_statusLabel->setText("Initializing audio system...");
-    m_volumeLabel->setText("Audio device initializing...");
 }
 
 void MainWindow::onAudioDeviceReady()
@@ -352,7 +340,6 @@ void MainWindow::onAudioDeviceReady()
     // Update UI when audio device is fully ready and recording is actually happening
     m_statusLabel->setText("Recording in progress... (Press Enter/Space to save, Esc to cancel)");
     m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #4CFF64;");
-    m_volumeLabel->setText("Audio device ready - recording in progress");
     
     // Change background to indicate active recording
     QPalette pal = palette();
@@ -414,7 +401,7 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
         if (m_transcriptionService && m_transcriptionService->isTranscribing()) {
             // Don't exit if transcription is in progress
             qInfo() << "[INFO] Enter/Space key pressed - waiting for transcription to complete";
-            m_volumeLabel->setText("Please wait for transcription to complete...");
+            m_statusLabel->setText("Please wait for transcription to complete...");
             return;
         }
         
@@ -540,18 +527,18 @@ void MainWindow::onTranscriptionFailed(const QString& errorMessage)
         
         // Show a message suggesting retry
         if (m_autoCloseSeconds > 0) {
-            m_volumeLabel->setText(QString("Click 'Try Again' or wait %1s for auto-close").arg(m_autoCloseSeconds));
+            m_statusLabel->setText(QString("Click 'Try Again' or wait %1s for auto-close").arg(m_autoCloseSeconds));
         } else {
-            m_volumeLabel->setText("Click 'Try Again' or press Enter/Space to exit");
+            m_statusLabel->setText("Click 'Try Again' or press Enter/Space to exit");
         }
     } else {
         // No API key, don't show the retry button
         m_transcribeButton->setVisible(false);
         
         if (m_autoCloseSeconds > 0) {
-            m_volumeLabel->setText(QString("No API key found - Auto-closing in %1s").arg(m_autoCloseSeconds));
+            m_statusLabel->setText(QString("No API key found - Auto-closing in %1s").arg(m_autoCloseSeconds));
         } else {
-            m_volumeLabel->setText("No API key found - Press Enter/Space to exit");
+            m_statusLabel->setText("No API key found - Press Enter/Space to exit");
         }
     }
     
@@ -576,9 +563,9 @@ void MainWindow::onTranscriptionFailed(const QString& errorMessage)
             
             // Update message with remaining time
             if (!env.value("OPENAI_API_KEY").isEmpty()) {
-                m_volumeLabel->setText(QString("Click 'Try Again' or wait %1s for auto-close").arg(remainingSeconds));
+                m_statusLabel->setText(QString("Click 'Try Again' or wait %1s for auto-close").arg(remainingSeconds));
             } else {
-                m_volumeLabel->setText(QString("No API key found - Auto-closing in %1s").arg(remainingSeconds));
+                m_statusLabel->setText(QString("No API key found - Auto-closing in %1s").arg(remainingSeconds));
             }
         });
         
