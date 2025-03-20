@@ -167,6 +167,18 @@ bool OpenAiTranscriptionService::hasApiKey() const
     return !m_apiKey.isEmpty();
 }
 
+void OpenAiTranscriptionService::refreshApiKey()
+{
+    // Retrieve API key from environment variable
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    QString newApiKey = env.value("OPENAI_API_KEY");
+    
+    if (newApiKey != m_apiKey) {
+        qInfo() << "API key updated from environment";
+        m_apiKey = newApiKey;
+    }
+}
+
 void OpenAiTranscriptionService::onUploadProgress(qint64 bytesSent, qint64 bytesTotal)
 {
     if (bytesTotal > 0) {

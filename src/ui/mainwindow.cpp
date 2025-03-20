@@ -24,7 +24,7 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
       m_statusLabel(new QLabel(this)),
       m_volumeLabel(new QLabel(this)),
       m_transcriptionLabel(new QLabel(this)),
-      m_transcribeButton(new QPushButton("Transcribe Recording", this)),
+      m_transcribeButton(new QPushButton(this)),
       m_hasApiKey(false)
 {
     // Set window properties
@@ -102,6 +102,22 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
         m_transcriptionLabel->setText("NO API KEY - Set OPENAI_API_KEY environment variable");
     }
     
+    // Set up auto-close timer for transcription errors
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    bool ok = false;
+    m_autoCloseSeconds = env.value("RECORDER_AUTO_CLOSE_ON_ERROR_AFTER", "0").toInt(&ok);
+    if (!ok) {
+        m_autoCloseSeconds = 0; // Default to no auto-close if invalid value
+    }
+    
+    qDebug() << "Auto-close on error setting:" << m_autoCloseSeconds << "seconds";
+    
+    m_autoCloseTimer.setSingleShot(true);
+    connect(&m_autoCloseTimer, &QTimer::timeout, this, [this]() {
+        qInfo() << "Auto-closing application after error";
+        QApplication::quit();
+    });
+    
     // Clean up any leftover transcription file
     QFile leftoverTranscriptionFile(TRANSCRIPTION_OUTPUT_PATH);
     if (leftoverTranscriptionFile.exists()) {
@@ -113,28 +129,31 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
 void MainWindow::updateUI()
 {
     if (!m_recorder) return;
-
-    qint64 size = m_recorder->fileSize();
-    qint64 elapsed = m_recorder->elapsedMs();
     
-    // Format elapsed time in a more readable format
-    int seconds = elapsed / 1000;
-    int minutes = seconds / 60;
-    seconds %= 60;
-    
-    // Format file size in KB
-    float sizeKB = static_cast<float>(size) / 1024.0f;
-    
-    // Only update recording info after we have some data (indicates initialization is complete)
-    if (size > 0) {
-        QString infoText = QString("Recording... %1:%2 | Size: %3 KB")
-                .arg(minutes, 2, 10, QChar('0'))
-                .arg(seconds, 2, 10, QChar('0'))
-                .arg(sizeKB, 0, 'f', 2);
-        m_statusLabel->setText(infoText);
+    // Only update timer and size if recording is still active
+    if (m_recorder->isRecording()) {
+        qint64 size = m_recorder->fileSize();
+        qint64 elapsed = m_recorder->elapsedMs();
         
+        // Format elapsed time in a more readable format
+        int seconds = elapsed / 1000;
+        int minutes = seconds / 60;
+        seconds %= 60;
+        
+        // Format file size in KB
+        float sizeKB = static_cast<float>(size) / 1024.0f;
+        
+        // Only update recording info after we have some data (indicates initialization is complete)
+        if (size > 0) {
+            QString infoText = QString("Recording... %1:%2 | Size: %3 KB")
+                    .arg(minutes, 2, 10, QChar('0'))
+                    .arg(seconds, 2, 10, QChar('0'))
+                    .arg(sizeKB, 0, 'f', 2);
+            m_statusLabel->setText(infoText);
+            
             // No need to change background on first data anymore, 
-        // that's handled by onRecordingStarted()
+            // that's handled by onRecordingStarted()
+        }
     }
 }
 
@@ -267,24 +286,46 @@ void MainWindow::onRecordingStopped()
     m_statusLabel->setPalette(pal);
     m_volumeLabel->setPalette(pal);
     
-    // Enable transcription button if we have a valid recording and API key
+    // Check for valid recording and API key
     QFile recordingFile(OUTPUT_FILE_PATH);
     if (recordingFile.exists() && m_hasApiKey) {
-        m_transcribeButton->setEnabled(true);
-        m_transcriptionLabel->setText("Ready to transcribe recording");
-        m_transcriptionLabel->setStyleSheet("color: #4CFF64;");
+        // Auto-start transcription
+        m_transcriptionLabel->setText("Automatically starting transcription...");
+        m_transcriptionLabel->setStyleSheet("color: #5CAAFF;");
+        
+        // Make sure the button is hidden during auto-transcription
+        m_transcribeButton->setVisible(false);
+        
+        // Add a note about waiting for transcription
+        m_volumeLabel->setText("Please wait while transcription completes...");
+        
+        // Slight delay to update UI before starting transcription
+        QTimer::singleShot(500, this, [this]() {
+            onTranscribeButtonClicked();
+        });
     } else if (!m_hasApiKey) {
         m_transcriptionLabel->setText("NO API KEY - Transcription unavailable");
         m_transcriptionLabel->setStyleSheet("color: #FF6B6B;");
+        
+        // Hide the transcribe button since there's no API key
+        m_transcribeButton->setVisible(false);
+        
+        // Add a note about pressing Esc or Enter/Space to close
+        QTimer::singleShot(1000, this, [this]() {
+            m_volumeLabel->setText("Press Enter/Space to save and exit, or Esc to cancel");
+        });
     } else {
         m_transcriptionLabel->setText("Recording file not found");
         m_transcriptionLabel->setStyleSheet("color: #FF6B6B;");
+        
+        // Hide the transcribe button since there's no recording file
+        m_transcribeButton->setVisible(false);
+        
+        // Add a note about pressing Esc or Enter/Space to close
+        QTimer::singleShot(1000, this, [this]() {
+            m_volumeLabel->setText("Press Enter/Space to save and exit, or Esc to cancel");
+        });
     }
-    
-    // Add a note about pressing Esc or Enter/Space to close
-    QTimer::singleShot(1000, this, [this]() {
-        m_volumeLabel->setText("Press Enter/Space to save and exit, or Esc to cancel");
-    });
 }
 
 void MainWindow::onRecordingStarted()
@@ -353,16 +394,25 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
         });
     }
     else if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter || event->key() == Qt::Key_Space) {
-        // Enter or Space key pressed - stop recording, save the file, and exit
-        qInfo() << "[INFO] Enter/Space key pressed - stopping recording and saving";
+        // First check if transcription is in progress
+        if (m_transcriptionService && m_transcriptionService->isTranscribing()) {
+            // Don't exit if transcription is in progress
+            qInfo() << "[INFO] Enter/Space key pressed - waiting for transcription to complete";
+            m_volumeLabel->setText("Please wait for transcription to complete...");
+            return;
+        }
         
-        // Stop recording
-        m_recorder->stopRecording();
+        // If recording is still active, stop it and begin the transcription process
+        if (m_recorder->isRecording()) {
+            qInfo() << "[INFO] Enter/Space key pressed - stopping recording and saving";
+            m_recorder->stopRecording();
+            // Don't exit yet - onRecordingStopped will start transcription
+            return;
+        }
         
-        // Wait briefly to show status, then quit application
-        QTimer::singleShot(500, []() {
-            QApplication::quit();
-        });
+        // If we're here, recording is stopped and transcription is done - ok to exit
+        qInfo() << "[INFO] Enter/Space key pressed - exiting application";
+        QApplication::quit();
     }
     else {
         QMainWindow::keyPressEvent(event);
@@ -371,8 +421,9 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
 
 void MainWindow::setupTranscriptionUI()
 {
-    // Configure transcription button
-    m_transcribeButton->setEnabled(false);
+    // Configure transcription button - initially hidden since transcription is automatic
+    m_transcribeButton->setVisible(false);
+    m_transcribeButton->setText("Try Again");
     m_transcribeButton->setStyleSheet("QPushButton { "
                                      "  background-color: #4CAF50; "
                                      "  color: white; "
@@ -389,13 +440,19 @@ void MainWindow::setupTranscriptionUI()
     
     // Configure transcription status label
     m_transcriptionLabel->setStyleSheet("font-size: 10pt;");
-    m_transcriptionLabel->setText("Complete recording to enable transcription");
+    m_transcriptionLabel->setText("Recording will be automatically transcribed when complete");
     m_transcriptionLabel->setAlignment(Qt::AlignCenter);
 }
 
 void MainWindow::onTranscribeButtonClicked()
 {
     if (!m_transcriptionService) return;
+    
+    // Cancel any auto-close timer when retry is attempted
+    if (m_autoCloseTimer.isActive()) {
+        m_autoCloseTimer.stop();
+        qInfo() << "Auto-close timer canceled due to retry attempt";
+    }
     
     // Check if the recording file exists
     QFile recordingFile(OUTPUT_FILE_PATH);
@@ -409,6 +466,13 @@ void MainWindow::onTranscribeButtonClicked()
     m_transcribeButton->setEnabled(false);
     m_transcriptionLabel->setStyleSheet("color: #5CAAFF;");
     m_transcriptionLabel->setText("Starting transcription process...");
+    
+    // Check environment again for API key (might have been updated)
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    if (env.contains("OPENAI_API_KEY") && !env.value("OPENAI_API_KEY").isEmpty()) {
+        // Refresh the transcription service with the latest API key
+        m_transcriptionService->refreshApiKey();
+    }
     
     m_transcriptionService->transcribeAudio(OUTPUT_FILE_PATH);
 }
@@ -424,19 +488,20 @@ void MainWindow::onTranscriptionCompleted(const QString& transcribedText)
         displayText = displayText.left(97) + "...";
     }
     
+    // Update status label to show transcription complete rather than recording timer
+    m_statusLabel->setText("Transcription Completed Successfully");
+    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #4CFF64;");
+    
     m_transcriptionLabel->setText(QString("Transcription complete: \"%1\"").arg(displayText));
     
-    // Re-enable the transcribe button
-    m_transcribeButton->setEnabled(true);
+    // Hide the "Try Again" button as it's not needed after success
+    m_transcribeButton->setVisible(false);
     
-    // Show a dialog with the full text
-    QMessageBox msgBox;
-    msgBox.setWindowTitle("Transcription Complete");
-    msgBox.setText("Speech transcription completed successfully.");
-    msgBox.setDetailedText(transcribedText);
-    msgBox.setStandardButtons(QMessageBox::Ok);
-    msgBox.setDefaultButton(QMessageBox::Ok);
-    msgBox.exec();
+    // Log the transcription result to console
+    qInfo() << "Transcription result:" << transcribedText;
+    
+    // Show message that transcription is complete
+    m_volumeLabel->setText("Transcription completed - Press Enter/Space to exit");
 }
 
 void MainWindow::onTranscriptionFailed(const QString& errorMessage)
@@ -445,8 +510,67 @@ void MainWindow::onTranscriptionFailed(const QString& errorMessage)
     m_transcriptionLabel->setStyleSheet("color: #FF6B6B;");
     m_transcriptionLabel->setText(QString("Transcription failed: %1").arg(errorMessage));
     
-    // Re-enable the transcribe button
-    m_transcribeButton->setEnabled(true);
+    // Update status label to show transcription failed rather than recording timer
+    m_statusLabel->setText("Transcription Failed");
+    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #FF6B6B;");
+    
+    // Check environment again for API key (might have been updated)
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    if (!env.value("OPENAI_API_KEY").isEmpty()) {
+        // Make the "Try Again" button visible
+        m_transcribeButton->setVisible(true);
+        m_transcribeButton->setEnabled(true);
+        
+        // Show a message suggesting retry
+        if (m_autoCloseSeconds > 0) {
+            m_volumeLabel->setText(QString("Click 'Try Again' or wait %1s for auto-close").arg(m_autoCloseSeconds));
+        } else {
+            m_volumeLabel->setText("Click 'Try Again' or press Enter/Space to exit");
+        }
+    } else {
+        // No API key, don't show the retry button
+        m_transcribeButton->setVisible(false);
+        
+        if (m_autoCloseSeconds > 0) {
+            m_volumeLabel->setText(QString("No API key found - Auto-closing in %1s").arg(m_autoCloseSeconds));
+        } else {
+            m_volumeLabel->setText("No API key found - Press Enter/Space to exit");
+        }
+    }
+    
+    // Log the transcription error to console
+    qWarning() << "Transcription failed:" << errorMessage;
+    
+    // Start auto-close timer if enabled
+    if (m_autoCloseSeconds > 0) {
+        // Start countdown timer for visual feedback
+        QTimer* countdownTimer = new QTimer(this);
+        countdownTimer->setInterval(1000);
+        int remainingSeconds = m_autoCloseSeconds;
+        
+        connect(countdownTimer, &QTimer::timeout, this, [this, countdownTimer, remainingSeconds, &env]() mutable {
+            remainingSeconds--;
+            
+            if (remainingSeconds <= 0) {
+                countdownTimer->stop();
+                countdownTimer->deleteLater();
+                return;
+            }
+            
+            // Update message with remaining time
+            if (!env.value("OPENAI_API_KEY").isEmpty()) {
+                m_volumeLabel->setText(QString("Click 'Try Again' or wait %1s for auto-close").arg(remainingSeconds));
+            } else {
+                m_volumeLabel->setText(QString("No API key found - Auto-closing in %1s").arg(remainingSeconds));
+            }
+        });
+        
+        countdownTimer->start();
+        
+        // Set the actual close timer
+        m_autoCloseTimer.start(m_autoCloseSeconds * 1000);
+        qInfo() << "Will auto-close after" << m_autoCloseSeconds << "seconds due to transcription error";
+    }
 }
 
 void MainWindow::onTranscriptionProgress(const QString& status)
@@ -454,4 +578,18 @@ void MainWindow::onTranscriptionProgress(const QString& status)
     // Update UI with progress status
     m_transcriptionLabel->setStyleSheet("color: #5CAAFF;");
     m_transcriptionLabel->setText(status);
+    
+    // Hide the retry button during transcription
+    m_transcribeButton->setVisible(false);
+    
+    // Update status label to show transcription progress rather than recording timer
+    m_statusLabel->setText("Transcription in Progress");
+    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #5CAAFF;");
+}
+
+void MainWindow::cancelTranscription()
+{
+    if (m_transcriptionService && m_transcriptionService->isTranscribing()) {
+        m_transcriptionService->cancelTranscription();
+    }
 }

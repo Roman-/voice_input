@@ -25,6 +25,9 @@ public:
     
     // Check if the API key is available
     bool hasApiKey() const override;
+    
+    // Refresh API key from environment (used when retrying)
+    void refreshApiKey() override;
 
 private slots:
     void completeTranscription();

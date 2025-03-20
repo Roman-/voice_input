@@ -25,6 +25,9 @@ public:
     float currentVolumeLevel() const;
     qint64 fileSize() const;
     qint64 elapsedMs() const;
+    
+    // Check if recording is active
+    bool isRecording() const { return m_isRecording; }
 
 signals:
     void volumeChanged(float newVolume);

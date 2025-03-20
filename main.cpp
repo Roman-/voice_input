@@ -10,8 +10,9 @@
 #include "core/audiorecorder.h"
 #include "ui/mainwindow.h"
 
-// Global pointer to AudioRecorder for signal handling
+// Global pointers for signal handling
 static AudioRecorder* g_audioRecorder = nullptr;
+static MainWindow* g_mainWindow = nullptr;
 
 static void signalHandler(int sig)
 {
@@ -19,6 +20,12 @@ static void signalHandler(int sig)
     if (g_audioRecorder) {
         g_audioRecorder->stopRecording();
     }
+    
+    // Cancel any transcription in progress
+    if (g_mainWindow) {
+        g_mainWindow->cancelTranscription();
+    }
+    
     QCoreApplication::quit();
 }
 
@@ -80,14 +87,17 @@ int main(int argc, char *argv[])
     
     // Create main window (UI) and pass a pointer to the recorder
     MainWindow window(&recorder);
+    g_mainWindow = &window;  // For signalHandler access
     window.show();
 
-    // If timeout was specified, stop after the given period
+    // If timeout was specified, stop recording after the given period
+    // But don't quit immediately - we need to allow transcription to complete
     if (timeoutMs > 0) {
         QTimer::singleShot(timeoutMs, [&](){
             qInfo() << "[INFO] Timeout reached:" << timeoutMs << "ms";
             recorder.stopRecording();
-            QApplication::quit();
+            // Don't quit - let the transcription process complete
+            // QApplication::quit() will be called after transcription
         });
     }
 

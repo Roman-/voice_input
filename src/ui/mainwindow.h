@@ -17,6 +17,9 @@ class MainWindow : public QMainWindow
 public:
     explicit MainWindow(AudioRecorder* recorder, QWidget* parent = nullptr);
     ~MainWindow() = default;
+    
+    // Cancel any ongoing transcription - used by signal handler
+    void cancelTranscription();
 
 private slots:
     void updateUI();
@@ -51,6 +54,8 @@ private:
     QHBoxLayout*   m_volumeBarLayout;
     QPushButton*   m_transcribeButton;
     bool           m_hasApiKey;
+    QTimer         m_autoCloseTimer;
+    int            m_autoCloseSeconds;
 };
 
 #endif // MAINWINDOW_H

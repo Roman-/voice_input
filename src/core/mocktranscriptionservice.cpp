@@ -99,6 +99,12 @@ bool MockTranscriptionService::hasApiKey() const
     return true;
 }
 
+void MockTranscriptionService::refreshApiKey()
+{
+    // No-op in mock implementation - we always have an API key
+    qInfo() << "Mock service always has an API key";
+}
+
 void MockTranscriptionService::completeTranscription()
 {
     if (!m_isTranscribing) {

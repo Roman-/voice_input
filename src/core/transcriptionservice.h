@@ -24,6 +24,9 @@ public:
     
     // Check if the API key is available
     virtual bool hasApiKey() const = 0;
+    
+    // Refresh API key from environment (used when retrying)
+    virtual void refreshApiKey() = 0;
 
 signals:
     // Emitted when transcription completes successfully
