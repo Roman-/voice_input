@@ -37,8 +37,8 @@ void TestTranscription::initTestCase()
     
     // Use our properly formatted test file
     QStringList possiblePaths;
-    possiblePaths << QDir::currentPath() + "/hello_world_fixed.mp4"  // Current directory
-                 << QDir::currentPath() + "/../hello_world_fixed.mp4"; // Parent directory
+    possiblePaths << QDir::currentPath() + "/hello_world.mp3"  // Current directory
+                  << QDir::currentPath() + "/../hello_world.mp3"; // Parent directory
     
     // Try to find the file
     testAudioPath = "";
