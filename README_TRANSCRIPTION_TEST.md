@@ -4,9 +4,11 @@ This document explains how to run the transcription test that verifies the funct
 
 ## Prerequisites
 
-1. **API Key**: You must have an OpenAI API key set as an environment variable named `OPENAI_API_KEY`.
+1. **API Key**: You have two options:
+   - **Real API**: Set your OpenAI API key as an environment variable named `OPENAI_API_KEY`
+   - **Mock API**: Set the environment variable `OPENAI_API_KEY=test` to use a mock implementation
 
-2. **Test Audio File**: The test requires a file called `hello_world_fixed.mp4` in the project's root directory. This file should contain an audio recording of someone saying "hello world" (words can be in any order, case, or with punctuation). The file must be in a format directly supported by the Whisper API (MP4 format in our case).
+2. **Test Audio File**: The test requires a file called `hello_world.mp3` in the project's root directory. This file should contain an audio recording of someone saying "hello world" (words can be in any order, case, or with punctuation). The file must be in MP3 format.
 
 ## Running the Test
 
@@ -35,12 +37,14 @@ This document explains how to run the transcription test that verifies the funct
 
 ## Notes
 
-- The test will be skipped if the API key is not available
-- The test will fail if the transcription doesn't contain both "hello" and "world"
-- A timeout of 120 seconds (2 minutes) is set for the transcription to complete
-- The test is case-insensitive, so any capitalization of "hello" and "world" will pass
+- The real API test will be skipped if the API key is not available or if using the mock API
+- The mock API test will be run only when OPENAI_API_KEY=test
+- The test will fail if the transcription doesn't contain both "hello" and "world" (real API)
+- For the mock API, the test checks for the exact response: "Hello, world."
+- A timeout of 120 seconds (2 minutes) is set for the real API call
+- A timeout of 10 seconds is set for the mock API call
+- The test is case-insensitive for the real API
 - The output file is cleaned up at the end of the test
-- The test requires a successful API call to pass
 
 ## Real API Testing
 
@@ -51,19 +55,57 @@ For testing with the real API, ensure that:
 
 If the API call fails, the test will output detailed error information including the HTTP status code and response body. This information can be helpful for debugging issues with the API integration.
 
+## Mock API Testing
+
+The mock API provides a way to test the application without making real API calls:
+
+1. Set the environment variable to exactly "test":
+   ```bash
+   export OPENAI_API_KEY=test
+   ```
+
+2. Run the test or application as normal - it will automatically use the mock implementation
+
+The mock API implementation:
+- Always returns a fixed response: `{"text":"Hello, world."}`
+- Has a random delay between 1-3 seconds to simulate network latency
+- Emits progress signals to test the progress UI
+- Does not make any real network requests
+- Works with any valid audio file regardless of content (but still checks if the file exists)
+
 ## Creating a Compatible Test File
 
 If you're having issues with your audio file format, you can convert it to a compatible format using FFmpeg:
 
 ```bash
-# Convert any audio file to MP4 format supported by Whisper API
-ffmpeg -i your_input_file.mp3 -c:a aac -f mp4 hello_world_fixed.mp4
+# Convert any audio file to MP3 format
+ffmpeg -i your_input_file.wav -ar 44100 -ac 1 -b:a 128k hello_world.mp3
 
-# If your original file is in MP3 format, you need to convert it to MP4 container
-ffmpeg -i hello_world.mp3 -c:a aac -f mp4 hello_world_fixed.mp4
+# If you need to convert between formats
+ffmpeg -i hello_world.mp4 -ar 44100 -ac 1 -b:a 128k hello_world.mp3
 ```
 
 Common issues with audio files:
 - Raw MP3 files may not be recognized by the API in some cases
 - Files must have proper container formats (MP4, MP3, etc.) not just the raw audio data
 - The Whisper API requires specific formats listed in their documentation
+
+## Integrating Mock API in Custom Tests
+
+You can use the mock API in your own tests by setting the API key to "test" before running any code that creates a transcription service:
+
+```cpp
+// Set environment variable programmatically
+qputenv("OPENAI_API_KEY", "test");
+
+// Create transcription service using factory
+TranscriptionService* service = TranscriptionFactory::createTranscriptionService(this);
+
+// Now the service will be a MockTranscriptionService that responds with "Hello, world."
+```
+
+This approach allows you to:
+- Run tests without real API keys
+- Test the application workflow without internet connectivity
+- Get consistent, predictable responses
+- Avoid consuming API quota during development and testing

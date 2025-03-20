@@ -14,13 +14,13 @@
 
 #include "core/audiorecorder.h"
 #include "core/transcriptionservice.h"
-#include "core/openaitranscriptionservice.h"
+#include "core/transcriptionfactory.h"
 #include "config/config.h"
 
 MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     : QMainWindow(parent),
       m_recorder(recorder),
-      m_transcriptionService(new OpenAiTranscriptionService(this)),
+      m_transcriptionService(TranscriptionFactory::createTranscriptionService(this)),
       m_statusLabel(new QLabel(this)),
       m_volumeLabel(new QLabel(this)),
       m_transcriptionLabel(new QLabel(this)),
