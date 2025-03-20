@@ -183,7 +183,13 @@ void OpenAiTranscriptionService::onUploadProgress(qint64 bytesSent, qint64 bytes
 {
     if (bytesTotal > 0) {
         int percentage = static_cast<int>((bytesSent * 100) / bytesTotal);
-        emit transcriptionProgress(QString("Uploading audio: %1%").arg(percentage));
+        
+        // When upload is 100% complete, change message to indicate waiting for server processing
+        if (percentage >= 100) {
+            emit transcriptionProgress("Processing audio... Waiting for server response");
+        } else {
+            emit transcriptionProgress(QString("Uploading audio: %1%").arg(percentage));
+        }
     }
 }
 
@@ -193,6 +199,9 @@ void OpenAiTranscriptionService::handleNetworkReply(QNetworkReply* reply)
         // Not our current reply, ignore it
         return;
     }
+    
+    // Update status to indicate response received
+    emit transcriptionProgress("Response received, parsing results...");
     
     m_isTranscribing = false;
     
