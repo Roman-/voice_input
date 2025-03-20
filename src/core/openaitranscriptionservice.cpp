@@ -1,4 +1,4 @@
-#include "transcriptionservice.h"
+#include "openaitranscriptionservice.h"
 #include <QHttpMultiPart>
 #include <QNetworkRequest>
 #include <QProcess>
@@ -9,8 +9,8 @@
 #include <QFileInfo>
 #include "config/config.h"
 
-TranscriptionService::TranscriptionService(QObject* parent)
-    : QObject(parent),
+OpenAiTranscriptionService::OpenAiTranscriptionService(QObject* parent)
+    : TranscriptionService(parent),
       m_networkManager(new QNetworkAccessManager(this)),
       m_currentReply(nullptr),
       m_isTranscribing(false)
@@ -21,15 +21,15 @@ TranscriptionService::TranscriptionService(QObject* parent)
     
     // Connect network signals
     connect(m_networkManager, &QNetworkAccessManager::finished, 
-            this, &TranscriptionService::handleNetworkReply);
+            this, &OpenAiTranscriptionService::handleNetworkReply);
 }
 
-TranscriptionService::~TranscriptionService()
+OpenAiTranscriptionService::~OpenAiTranscriptionService()
 {
     cancelTranscription();
 }
 
-void TranscriptionService::transcribeAudio(const QString& audioFilePath)
+void OpenAiTranscriptionService::transcribeAudio(const QString& audioFilePath)
 {
     // Check if we're already transcribing
     if (m_isTranscribing) {
@@ -130,16 +130,16 @@ void TranscriptionService::transcribeAudio(const QString& audioFilePath)
         m_networkManager->deleteLater();
     }
     m_networkManager = new QNetworkAccessManager(this);
-    connect(m_networkManager, &QNetworkAccessManager::finished, this, &TranscriptionService::handleNetworkReply);
+    connect(m_networkManager, &QNetworkAccessManager::finished, this, &OpenAiTranscriptionService::handleNetworkReply);
     
     m_currentReply = m_networkManager->post(request, multiPart);
     multiPart->setParent(m_currentReply); // QNetworkReply takes ownership
     
     // Connect to progress signals
-    connect(m_currentReply, &QNetworkReply::uploadProgress, this, &TranscriptionService::onUploadProgress);
+    connect(m_currentReply, &QNetworkReply::uploadProgress, this, &OpenAiTranscriptionService::onUploadProgress);
 }
 
-void TranscriptionService::cancelTranscription()
+void OpenAiTranscriptionService::cancelTranscription()
 {
     if (m_isTranscribing) {
         if (m_currentReply) {
@@ -152,22 +152,22 @@ void TranscriptionService::cancelTranscription()
     }
 }
 
-bool TranscriptionService::isTranscribing() const
+bool OpenAiTranscriptionService::isTranscribing() const
 {
     return m_isTranscribing;
 }
 
-QString TranscriptionService::lastError() const
+QString OpenAiTranscriptionService::lastError() const
 {
     return m_lastError;
 }
 
-bool TranscriptionService::hasApiKey() const
+bool OpenAiTranscriptionService::hasApiKey() const
 {
     return !m_apiKey.isEmpty();
 }
 
-void TranscriptionService::onUploadProgress(qint64 bytesSent, qint64 bytesTotal)
+void OpenAiTranscriptionService::onUploadProgress(qint64 bytesSent, qint64 bytesTotal)
 {
     if (bytesTotal > 0) {
         int percentage = static_cast<int>((bytesSent * 100) / bytesTotal);
@@ -175,7 +175,7 @@ void TranscriptionService::onUploadProgress(qint64 bytesSent, qint64 bytesTotal)
     }
 }
 
-void TranscriptionService::handleNetworkReply(QNetworkReply* reply)
+void OpenAiTranscriptionService::handleNetworkReply(QNetworkReply* reply)
 {
     if (reply != m_currentReply) {
         // Not our current reply, ignore it

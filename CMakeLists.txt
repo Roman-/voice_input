@@ -35,7 +35,8 @@ set(CMAKE_AUTORCC ON)
 set(SOURCES
     main.cpp
     src/core/audiorecorder.cpp
-    src/core/transcriptionservice.cpp
+    src/core/transcriptionservice.h
+    src/core/openaitranscriptionservice.cpp
     src/ui/mainwindow.cpp
 )
 
@@ -65,7 +66,8 @@ add_executable(test_file_verification
 # Add transcription test
 add_executable(test_transcription
     src/tests/test_transcription.cpp
-    src/core/transcriptionservice.cpp
+    src/core/transcriptionservice.h
+    src/core/openaitranscriptionservice.cpp
 )
 
 target_link_libraries(test_recorder

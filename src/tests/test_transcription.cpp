@@ -6,6 +6,7 @@
 #include <iostream>
 
 #include "core/transcriptionservice.h"
+#include "core/openaitranscriptionservice.h"
 #include "config/config.h"
 
 class TestTranscription : public QObject
@@ -26,8 +27,8 @@ private:
 
 void TestTranscription::initTestCase()
 {
-    // Create transcription service
-    transcriptionService = new TranscriptionService(this);
+    // Create OpenAI transcription service
+    transcriptionService = new OpenAiTranscriptionService(this);
     
     // Check if API key is available in environment
     apiKeyAvailable = transcriptionService->hasApiKey();
@@ -57,7 +58,7 @@ void TestTranscription::initTestCase()
         for (const QString& path : possiblePaths) {
             qWarning() << " -" << path;
         }
-        qWarning() << "Make sure hello_world.m4a exists in the project root directory.";
+        qWarning() << "Make sure hello_world.mp3 exists in the project root directory.";
     }
 }
 

@@ -2,33 +2,28 @@
 #define TRANSCRIPTIONSERVICE_H
 
 #include <QObject>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QFile>
 
 class TranscriptionService : public QObject
 {
     Q_OBJECT
 public:
-    explicit TranscriptionService(QObject* parent = nullptr);
-    ~TranscriptionService();
+    explicit TranscriptionService(QObject* parent = nullptr) : QObject(parent) {}
+    virtual ~TranscriptionService() {}
 
     // Start transcription of the given audio file
-    void transcribeAudio(const QString& audioFilePath);
+    virtual void transcribeAudio(const QString& audioFilePath) = 0;
     
     // Cancel ongoing transcription
-    void cancelTranscription();
+    virtual void cancelTranscription() = 0;
     
     // Check if transcription is in progress
-    bool isTranscribing() const;
+    virtual bool isTranscribing() const = 0;
     
     // Get last error message
-    QString lastError() const;
+    virtual QString lastError() const = 0;
     
     // Check if the API key is available
-    bool hasApiKey() const;
+    virtual bool hasApiKey() const = 0;
 
 signals:
     // Emitted when transcription completes successfully
@@ -39,17 +34,6 @@ signals:
     
     // Progress information
     void transcriptionProgress(const QString& status);
-
-private slots:
-    void handleNetworkReply(QNetworkReply* reply);
-    void onUploadProgress(qint64 bytesSent, qint64 bytesTotal);
-
-private:
-    QNetworkAccessManager* m_networkManager;
-    QNetworkReply* m_currentReply;
-    QString m_lastError;
-    bool m_isTranscribing;
-    QString m_apiKey;
 };
 
 #endif // TRANSCRIPTIONSERVICE_H
