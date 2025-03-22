@@ -1,14 +1,11 @@
 #include "mainwindow.h"
 #include <QVBoxLayout>
-#include <QHBoxLayout>
-#include <QDebug>
 #include <QPalette>
 #include <QColor>
 #include <QProgressBar>
 #include <QKeyEvent>
 #include <QApplication>
 #include <QMessageBox>
-#include <QDesktopServices>
 #include <QUrl>
 #include <QDir>
 
@@ -414,12 +411,10 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
         qInfo() << "[INFO] Enter/Space key pressed - exiting application with code:" << m_exitCode;
         QApplication::exit(m_exitCode);
     }
-    else if (event->key() == Qt::Key_L) {
+    else if (event->key() == Qt::Key_L || event->text() == QStringLiteral("ц")) {
         // Cycle through available languages
         m_languageIndex = (m_languageIndex + 1) % m_languages.size();
         qInfo() << "[INFO] Language changed to:" << m_languages[m_languageIndex];
-        
-        // Update UI to show the current language
         updateLanguageDisplay();
     }
     else {
@@ -524,7 +519,7 @@ void MainWindow::onTranscriptionFailed(const QString& errorMessage)
     // Update UI with error message
     m_transcriptionLabel->setStyleSheet("color: #FF6B6B;");
     m_transcriptionLabel->setText(QString("Language: %1 | Transcription failed: %2").arg(m_languages[m_languageIndex]).arg(errorMessage));
-    
+
     // Update status label to show transcription failed rather than recording timer
     m_statusLabel->setText("Transcription Failed");
     m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #FF6B6B;");
