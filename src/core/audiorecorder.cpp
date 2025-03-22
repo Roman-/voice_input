@@ -130,6 +130,10 @@ bool AudioRecorder::startRecording()
     m_elapsedTimer.start();
     m_isRecording = true;
     
+    // Make sure volume is reset on new recording (emit zero volume to reset bar)
+    m_currentVolume = 0.0f;
+    emit volumeChanged(m_currentVolume);
+    
     // Signal that recording has started (UI should reflect this immediately)
     emit recordingStarted();
     qInfo() << "Recording started, writing to:" << OUTPUT_FILE_PATH;
@@ -161,6 +165,10 @@ void AudioRecorder::stopRecording()
     if (m_outputFile.isOpen()) {
         m_outputFile.close();
     }
+
+    // Reset volume to zero now that recording has stopped
+    m_currentVolume = 0.0f;
+    emit volumeChanged(m_currentVolume);
 
     // Verify file was created and has content
     QFileInfo fileInfo(OUTPUT_FILE_PATH);
@@ -386,8 +394,7 @@ void AudioRecorder::handleAudioData(const void* inputBuffer, unsigned long frame
         return;
     }
     
-    // Always calculate volume level when we have data, even if not recording
-    // This ensures volume meter shows feedback immediately
+    // Calculate volume level from audio data
     const short* buffer = reinterpret_cast<const short*>(inputBuffer);
     long sum = 0;
     for (unsigned long i = 0; i < frames; ++i) {
@@ -399,8 +406,17 @@ void AudioRecorder::handleAudioData(const void* inputBuffer, unsigned long frame
     float normalizedVolume = average / 32767.0f;  // normalize to ~0..1
     m_currentVolume = qMin(normalizedVolume * VOLUME_SCALING_FACTOR, 1.0f);  // Apply scaling with 1.0 max
     
-    // Always emit volume change to update UI
-    emit volumeChanged(m_currentVolume);
+    // Only emit volume changes if we're recording
+    if (m_isRecording) {
+        emit volumeChanged(m_currentVolume);
+        
+        // Log volume levels periodically for debugging
+        static QElapsedTimer logTimer;
+        if (!logTimer.isValid() || logTimer.elapsed() > 5000) { // Log every 5 seconds
+            qDebug() << "Raw volume:" << normalizedVolume << "Scaled volume:" << m_currentVolume;
+            logTimer.start();
+        }
+    }
     
     // Only process for recording if we're actually recording and stream is ready
     if (!m_isRecording || !m_stream) {

@@ -174,12 +174,18 @@ void MainWindow::onVolumeChanged(float volume)
         qInfo() << "First audio data received, volume:" << volume;
     }
     
-    // Only update if we have a significant volume level (reduces noise in display)
-    static float lastVolume = 0.0f;
-    if (qAbs(volume - lastVolume) > 0.005f) {
-        // Just update the volume bar without showing percentage text
-        updateVolumeBar(volume);
-        lastVolume = volume;
+    // Only update volume if currently recording
+    if (m_recorder && m_recorder->isRecording()) {
+        // Only update if we have a significant volume level (reduces noise in display)
+        static float lastVolume = 0.0f;
+        if (qAbs(volume - lastVolume) > 0.005f) {
+            // Just update the volume bar without showing percentage text
+            updateVolumeBar(volume);
+            lastVolume = volume;
+        }
+    } else {
+        // Not recording, set volume to zero
+        updateVolumeBar(0.0f);
     }
 }
 
@@ -242,13 +248,6 @@ void MainWindow::updateVolumeBar(float volume)
     
     // Ensure scaledVolume is within 0-100 range
     scaledVolume = qBound(0.0f, scaledVolume, 100.0f);
-    
-    // Log volume levels periodically for debugging
-    static QElapsedTimer logTimer;
-    if (!logTimer.isValid() || logTimer.elapsed() > 5000) { // Log every 5 seconds
-        qDebug() << "Raw volume:" << volume << "Scaled volume:" << scaledVolume;
-        logTimer.start();
-    }
     
     // Update each segment
     for (int i = 0; i < m_volumeBarLayout->count(); i++) {
