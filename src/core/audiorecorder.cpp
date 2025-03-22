@@ -27,9 +27,86 @@ AudioRecorder::~AudioRecorder()
     finalizeMP3Encoder();
 }
 
+bool AudioRecorder::initializeAudioSystem()
+{
+    qInfo() << "Initializing audio system";
+    
+    // Initialize PortAudio but don't start the stream yet
+    if (!initializePortAudio(false)) {
+        qCritical() << "Failed to initialize PortAudio";
+        return false;
+    }
+    
+    // Mark that the audio device is ready
+    m_audioDeviceInitialized = true;
+    qInfo() << "Audio system initialized successfully";
+    emit audioDeviceReady();
+    
+    return true;
+}
+
+bool AudioRecorder::pauseAudioStream()
+{
+    if (!m_stream || !m_audioDeviceInitialized) {
+        return false;
+    }
+    
+    PaError err = Pa_StopStream(m_stream);
+    if (err != paNoError) {
+        qWarning() << "Failed to pause audio stream:" << Pa_GetErrorText(err);
+        return false;
+    }
+    
+    qInfo() << "Audio stream paused - no longer listening to microphone";
+    return true;
+}
+
+bool AudioRecorder::resumeAudioStream()
+{
+    if (!m_stream || !m_audioDeviceInitialized) {
+        return false;
+    }
+    
+    // Only resume if the stream is not already active
+    if (!Pa_IsStreamActive(m_stream)) {
+        PaError err = Pa_StartStream(m_stream);
+        if (err != paNoError) {
+            qWarning() << "Failed to resume audio stream:" << Pa_GetErrorText(err);
+            return false;
+        }
+        
+        qInfo() << "Audio stream resumed - now listening to microphone";
+    }
+    
+    return true;
+}
+
+bool AudioRecorder::isAudioStreamActive() const
+{
+    if (!m_stream) {
+        return false;
+    }
+    
+    return Pa_IsStreamActive(m_stream) == 1;
+}
+
 bool AudioRecorder::startRecording()
 {
     qInfo() << "startRecording() called";
+    
+    // Check if audio system is initialized
+    if (!m_audioDeviceInitialized) {
+        qCritical() << "Cannot start recording - audio system not initialized";
+        return false;
+    }
+
+    // Make sure the audio stream is active
+    if (!isAudioStreamActive()) {
+        if (!resumeAudioStream()) {
+            qCritical() << "Failed to resume audio stream for recording";
+            return false;
+        }
+    }
 
     // Prepare output file immediately
     m_outputFile.setFileName(OUTPUT_FILE_PATH);
@@ -55,20 +132,7 @@ bool AudioRecorder::startRecording()
     
     // Signal that recording has started (UI should reflect this immediately)
     emit recordingStarted();
-    
-    // Initialize PortAudio asynchronously - don't block UI
-    m_initFuture = QtConcurrent::run([this]() {
-        if (!initializePortAudio()) {
-            qCritical() << "Failed to initialize PortAudio";
-            m_isRecording = false;
-            m_outputFile.close();
-            return;
-        }
-        
-        // Mark that the audio device is ready - no artificial delay needed
-        m_audioDeviceInitialized = true;
-        qInfo() << "Audio device initialized successfully, recording to:" << OUTPUT_FILE_PATH;
-    });
+    qInfo() << "Recording started, writing to:" << OUTPUT_FILE_PATH;
     
     return true;
 }
@@ -80,18 +144,6 @@ void AudioRecorder::stopRecording()
 
     qDebug() << "stopRecording() called";
     m_isRecording = false;
-    
-    // Wait for initialization to complete if it's still running
-    if (m_initFuture.isRunning()) {
-        m_initFuture.waitForFinished();
-    }
-
-    // Stop PortAudio stream
-    if (m_stream) {
-        Pa_StopStream(m_stream);
-        Pa_CloseStream(m_stream);
-        m_stream = nullptr;
-    }
 
     // Finalize MP3 encoding
     if (m_mp3Initialized) {
@@ -232,7 +284,7 @@ QByteArray AudioRecorder::encodeToMP3(const short* inputBuffer, int inputSize)
     return result;
 }
 
-bool AudioRecorder::initializePortAudio()
+bool AudioRecorder::initializePortAudio(bool startStreamImmediately)
 {
     qDebug() << "Initializing PortAudio";
 
@@ -284,16 +336,21 @@ bool AudioRecorder::initializePortAudio()
         return false;
     }
 
-    err = Pa_StartStream(m_stream);
-    if (err != paNoError) {
-        qCritical() << "Pa_StartStream() failed:" << Pa_GetErrorText(err);
-        Pa_CloseStream(m_stream);
-        m_stream = nullptr;
-        Pa_Terminate();
-        return false;
+    // Only start the stream if requested
+    if (startStreamImmediately) {
+        err = Pa_StartStream(m_stream);
+        if (err != paNoError) {
+            qCritical() << "Pa_StartStream() failed:" << Pa_GetErrorText(err);
+            Pa_CloseStream(m_stream);
+            m_stream = nullptr;
+            Pa_Terminate();
+            return false;
+        }
+        qDebug() << "PortAudio stream opened and started successfully";
+    } else {
+        qDebug() << "PortAudio stream opened successfully but not started (paused)";
     }
-
-    qDebug() << "PortAudio stream opened successfully";
+    
     return true;
 }
 
@@ -344,14 +401,6 @@ void AudioRecorder::handleAudioData(const void* inputBuffer, unsigned long frame
     
     // Always emit volume change to update UI
     emit volumeChanged(m_currentVolume);
-    
-    // When we get first audio data, it confirms the audio device is fully ready
-    // This is the proper way to detect initialization completion
-    static bool signalEmitted = false;
-    if (m_audioDeviceInitialized && !signalEmitted) {
-        signalEmitted = true;
-        emit audioDeviceReady();
-    }
     
     // Only process for recording if we're actually recording and stream is ready
     if (!m_isRecording || !m_stream) {

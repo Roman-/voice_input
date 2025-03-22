@@ -18,8 +18,16 @@ public:
     explicit AudioRecorder(QObject* parent = nullptr);
     ~AudioRecorder();
 
+    // Initialize audio system - called once at startup
+    bool initializeAudioSystem();
+    
+    // Start/stop recording to file
     bool startRecording();
     void stopRecording();
+    
+    // Pause/resume the audio stream (to avoid listening when not needed)
+    bool pauseAudioStream();
+    bool resumeAudioStream();
 
     // For UI: volume level, file size, etc.
     float currentVolumeLevel() const;
@@ -28,6 +36,12 @@ public:
     
     // Check if recording is active
     bool isRecording() const { return m_isRecording; }
+    
+    // Check if audio system is initialized
+    bool isAudioSystemInitialized() const { return m_audioDeviceInitialized; }
+    
+    // Check if audio stream is active
+    bool isAudioStreamActive() const;
 
 signals:
     void volumeChanged(float newVolume);
@@ -36,7 +50,7 @@ signals:
     void audioDeviceReady();
 
 private:
-    bool initializePortAudio();
+    bool initializePortAudio(bool startStreamImmediately = true);
     void finalizePortAudio();
     bool initializeMP3Encoder();
     void finalizeMP3Encoder();

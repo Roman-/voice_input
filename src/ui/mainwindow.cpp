@@ -8,6 +8,7 @@
 #include <QMessageBox>
 #include <QUrl>
 #include <QDir>
+#include <QCloseEvent>
 
 #include "core/audiorecorder.h"
 #include "core/transcriptionservice.h"
@@ -22,7 +23,8 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
       m_transcriptionLabel(new QLabel(this)),
       m_transcribeButton(new QPushButton(this)),
       m_hasApiKey(false),
-      m_exitCode(APP_EXIT_FAILURE_GENERAL) // Default to failure exit code until successful transcription
+      m_exitCode(APP_EXIT_FAILURE_GENERAL), // Default to failure exit code until successful transcription
+      m_isClosingPermanently(false)
 {
     // Set window properties
     setWindowTitle("Audio Recorder");
@@ -362,7 +364,7 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
     }
     
     if (event->key() == Qt::Key_Escape) {
-        // Escape key pressed - cancel recording and exit without saving
+        // Escape key pressed - cancel recording and hide window
         qInfo() << "[INFO] Escape key pressed - canceling recording";
         
         // Set exit code for cancellation
@@ -384,19 +386,25 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
             qInfo() << "[INFO] Transcription file removed:" << TRANSCRIPTION_OUTPUT_PATH;
         }
         
+        QFile audioFile(OUTPUT_FILE_PATH);
+        if (audioFile.exists()) {
+            audioFile.remove();
+            qInfo() << "[INFO] Audio file removed:" << OUTPUT_FILE_PATH;
+        }
+        
         // Update UI
         m_statusLabel->setText("Recording canceled.");
         m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #FF6B6B;");
         
-        // Wait briefly to show status, then quit application
+        // Hide the window instead of exiting
         QTimer::singleShot(200, [this]() {
-            QApplication::exit(m_exitCode);
+            hide();
         });
     }
     else if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter || event->key() == Qt::Key_Space) {
         // First check if transcription is in progress
         if (m_transcriptionService && m_transcriptionService->isTranscribing()) {
-            // Don't exit if transcription is in progress
+            // Don't hide if transcription is in progress
             qInfo() << "[INFO] Enter/Space key pressed - waiting for transcription to complete";
             m_statusLabel->setText("Please wait for transcription to complete...");
             return;
@@ -406,13 +414,14 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
         if (m_recorder->isRecording()) {
             qInfo() << "[INFO] Enter/Space key pressed - stopping recording and saving";
             m_recorder->stopRecording();
-            // Don't exit yet - onRecordingStopped will start transcription
+            // Don't hide yet - onRecordingStopped will start transcription
             return;
         }
         
-        // If we're here, recording is stopped and transcription is done - ok to exit
-        qInfo() << "[INFO] Enter/Space key pressed - exiting application with code:" << m_exitCode;
-        QApplication::exit(m_exitCode);
+        // If we're here, recording is stopped and transcription is done
+        // Hide window instead of exiting
+        qInfo() << "[INFO] Enter/Space key pressed - hiding window";
+        hideAndReset();
     }
     else if (event->key() == Qt::Key_L || event->text() == QStringLiteral("ц")) {
         // Cycle through available languages
@@ -420,9 +429,74 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
         qInfo() << "[INFO] Language changed to:" << m_languages[m_languageIndex];
         updateLanguageDisplay();
     }
+    else if (event->key() == Qt::Key_Q && (event->modifiers() & Qt::ControlModifier)) {
+        // Ctrl+Q to actually exit the application
+        qInfo() << "[INFO] Ctrl+Q pressed - exiting application with code:" << m_exitCode;
+        m_isClosingPermanently = true;
+        QApplication::exit(m_exitCode);
+    }
     else {
         QMainWindow::keyPressEvent(event);
     }
+}
+
+void MainWindow::closeEvent(QCloseEvent* event)
+{
+    if (m_isClosingPermanently) {
+        // Allow the close if we're actually exiting
+        event->accept();
+    } else {
+        // Just hide the window instead of closing the application
+        event->ignore();
+        hideAndReset();
+    }
+}
+
+void MainWindow::hideAndReset()
+{
+    // Stop any ongoing recording
+    if (m_recorder && m_recorder->isRecording()) {
+        m_recorder->stopRecording();
+    }
+    
+    // Reset UI elements for next use
+    cleanupForNextRecording();
+    
+    // Pause the audio stream to stop listening to the microphone
+    if (m_recorder) {
+        m_recorder->pauseAudioStream();
+    }
+    
+    // Hide the window
+    hide();
+    
+    qInfo() << "[INFO] Window hidden, microphone paused, ready for next signal";
+}
+
+void MainWindow::cleanupForNextRecording()
+{
+    // Clean up files
+    QFile audioFile(OUTPUT_FILE_PATH);
+    if (audioFile.exists()) {
+        audioFile.remove();
+        qInfo() << "[DEBUG] Removed audio file for next recording:" << OUTPUT_FILE_PATH;
+    }
+    
+    QFile transcriptionFile(TRANSCRIPTION_OUTPUT_PATH);
+    if (transcriptionFile.exists()) {
+        transcriptionFile.remove();
+        qInfo() << "[DEBUG] Removed transcription file for next recording:" << TRANSCRIPTION_OUTPUT_PATH;
+    }
+    
+    // Reset volume display
+    updateVolumeBar(0.0f);
+    
+    // Reset UI state
+    m_statusLabel->setText("Ready for next recording.");
+    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #5CAAFF;");
+    
+    // Reset exit code to default
+    m_exitCode = APP_EXIT_FAILURE_GENERAL;
 }
 
 void MainWindow::setupTranscriptionUI()
@@ -496,11 +570,15 @@ void MainWindow::onTranscriptionCompleted(const QString& transcribedText)
     
     // Log the transcription result to console
     qInfo() << "Transcription result:\n-----\n" << transcribedText << "\n-----";
-    qInfo() << "Exit code set to" << m_exitCode << "(SUCCESS), exiting application";
+    qInfo() << "Exit code set to" << m_exitCode << "(SUCCESS), hiding window instead of exiting";
 
-    // Short delay to allow logging to complete, then exit
-    QTimer::singleShot(10, [this]() {
-        QApplication::exit(m_exitCode);
+    // Show success message briefly before hiding
+    m_statusLabel->setText("Transcription successful. Ready for next recording.");
+    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #4CFF64;");
+
+    // Short delay to allow logging to complete, then hide
+    QTimer::singleShot(1000, [this]() {
+        hideAndReset();
     });
 }
 

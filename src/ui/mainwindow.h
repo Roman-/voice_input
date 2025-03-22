@@ -21,6 +21,9 @@ public:
     // Cancel any ongoing transcription - used by signal handler
     void cancelTranscription();
     
+    // Hide window and prepare for next recording - used after transcription completed
+    void hideAndReset();
+    
     // Get the current exit code
     int exitCode() const { return m_exitCode; }
 
@@ -40,12 +43,16 @@ private slots:
 protected:
     // Override key press event to handle Enter/Escape keys
     void keyPressEvent(QKeyEvent*) override;
+    
+    // Override close event to handle window close requests
+    void closeEvent(QCloseEvent* event) override;
 
 private:
     void createVolumeBar();
     void updateVolumeBar(float volume);
     void setupTranscriptionUI();
     void updateLanguageDisplay();
+    void cleanupForNextRecording();
 
 private:
     AudioRecorder* m_recorder;
@@ -62,6 +69,7 @@ private:
     int            m_exitCode;  // Exit code to use when application terminates
     QVector<QString> m_languages{"en", "ru"};
     int m_languageIndex = 0;
+    bool           m_isClosingPermanently;
 };
 
 #endif // MAINWINDOW_H
