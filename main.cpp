@@ -8,6 +8,7 @@
 
 #include "config/config.h"
 #include "core/audiorecorder.h"
+#include "core/statusutils.h"
 #include "ui/mainwindow.h"
 
 // Global pointers for signal handling
@@ -45,6 +46,8 @@ static void signalHandler(int sig)
             // Start a new recording immediately - audio system is already initialized
             if (g_audioRecorder) {
                 g_audioRecorder->startRecording();
+                // Set status to busy
+                setFileStatus(STATUS_BUSY);
             }
             
             return;
@@ -72,6 +75,9 @@ static void signalHandler(int sig)
             }
         }
         
+        // Set status to error before exiting
+        setFileStatus(STATUS_ERROR, "Process terminated by signal");
+        
         // Use the canceled exit code for signal interruptions
         qInfo() << "Setting application exit code to:" << APP_EXIT_FAILURE_CANCELED << "(CANCELED)";
         exit(APP_EXIT_FAILURE_CANCELED);
@@ -87,6 +93,9 @@ int main(int argc, char *argv[])
     qSetMessagePattern("[%{type}] %{message}");
 
     qInfo() << "[INFO] Application started";
+    
+    // Set initial status to "ready"
+    setFileStatus(STATUS_READY);
 
     // Check if an instance is already running by examining the lock file
     QFile lockFile(LOCK_FILE_PATH);
@@ -175,6 +184,9 @@ int main(int argc, char *argv[])
                 qWarning() << "[WARNING] Failed to remove lock file:" << LOCK_FILE_PATH;
             }
         }
+        
+        // Clear status file on exit
+        clearFileStatus();
         
         // Set the application exit code based on MainWindow's exit code
         if (g_mainWindow) {

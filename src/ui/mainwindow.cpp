@@ -13,6 +13,7 @@
 #include "core/audiorecorder.h"
 #include "core/transcriptionservice.h"
 #include "core/transcriptionfactory.h"
+#include "core/statusutils.h"
 #include "config/config.h"
 
 MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
@@ -336,6 +337,9 @@ void MainWindow::onRecordingStarted()
     // Update UI when recording initialization starts
     m_statusLabel->setText("Initializing audio system...");
     
+    // Set status to busy
+    setFileStatus(STATUS_BUSY);
+    
     // Refresh language display
     updateLanguageDisplay();
 }
@@ -379,18 +383,26 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
             m_transcriptionService->cancelTranscription();
         }
 
-        // Remove the output file
-        QFile transcriptionFile(TRANSCRIPTION_OUTPUT_PATH);
-        if (transcriptionFile.exists()) {
-            transcriptionFile.remove();
-            qInfo() << "[INFO] Transcription file removed:" << TRANSCRIPTION_OUTPUT_PATH;
-        }
-        
+        // Remove the audio file
         QFile audioFile(OUTPUT_FILE_PATH);
         if (audioFile.exists()) {
             audioFile.remove();
             qInfo() << "[INFO] Audio file removed:" << OUTPUT_FILE_PATH;
         }
+        
+        // Create empty transcription file instead of removing it
+        QFile transcriptionFile(TRANSCRIPTION_OUTPUT_PATH);
+        if (transcriptionFile.exists()) {
+            transcriptionFile.remove();
+        }
+        if (transcriptionFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            // Just create an empty file
+            transcriptionFile.close();
+            qInfo() << "[INFO] Transcription file emptied:" << TRANSCRIPTION_OUTPUT_PATH;
+        }
+        
+        // Set status to ready (not idle)
+        setFileStatus(STATUS_READY);
         
         // Update UI
         m_statusLabel->setText("Recording canceled.");
@@ -467,7 +479,7 @@ void MainWindow::hideAndReset()
         m_recorder->pauseAudioStream();
     }
     
-    // Hide the window
+    // Hide the window - don't change status when window hides
     hide();
     
     qInfo() << "[INFO] Window hidden, microphone paused, ready for next signal";
@@ -578,6 +590,9 @@ void MainWindow::onTranscriptionCompleted(const QString& transcribedText)
     qInfo() << "Transcription result:\n-----\n" << transcribedText << "\n-----";
     qInfo() << "Exit code set to" << m_exitCode << "(SUCCESS), hiding window instead of exiting";
 
+    // Set status to ready
+    setFileStatus(STATUS_READY);
+
     // Show success message briefly before hiding
     m_statusLabel->setText("Transcription successful. Ready for next recording.");
     m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #4CFF64;");
@@ -602,6 +617,9 @@ void MainWindow::onTranscriptionFailed(const QString& errorMessage)
         m_exitCode = APP_EXIT_FAILURE_GENERAL;
         qWarning() << "Exit code set to" << m_exitCode << "(GENERAL_FAILURE)";
     }
+    
+    // Set status to error with the error message
+    setFileStatus(STATUS_ERROR, errorMessage);
     
     // Update UI with error message
     m_transcriptionLabel->setStyleSheet("color: #FF6B6B;");
@@ -682,6 +700,9 @@ void MainWindow::onTranscriptionProgress(const QString& status)
     // Update status label to show transcription progress rather than recording timer
     m_statusLabel->setText("Transcription in Progress");
     m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #5CAAFF;");
+    
+    // Update status file to show busy state
+    setFileStatus(STATUS_BUSY);
     
     // Reset volume bar to zero when transcription starts
     updateVolumeBar(0.0f);

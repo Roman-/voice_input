@@ -39,6 +39,7 @@ set(SOURCES
     src/core/openaitranscriptionservice.cpp
     src/core/mocktranscriptionservice.cpp
     src/core/transcriptionfactory.cpp
+    src/core/statusutils.cpp
     src/ui/mainwindow.cpp
 )
 

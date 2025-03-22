@@ -1,9 +1,10 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-constexpr auto OUTPUT_FILE_PATH = "/tmp/audio_recording.mp3";
-constexpr auto TRANSCRIPTION_OUTPUT_PATH = "/tmp/voice_input.txt";
+constexpr auto OUTPUT_FILE_PATH = "/tmp/voice_input_recording.mp3";
+constexpr auto TRANSCRIPTION_OUTPUT_PATH = "/tmp/voice_input_transcription.txt";
 constexpr auto LOCK_FILE_PATH = "/tmp/voice_input_lock.pid";
+constexpr auto STATUS_FILE_PATH = "/tmp/voice_input_status.txt";
 constexpr int DEFAULT_TIMEOUT = 0;           // No timeout by default
 constexpr int SAMPLE_RATE = 44100;           // CD-quality sample rate
 constexpr int NUM_CHANNELS = 1;              // Mono
