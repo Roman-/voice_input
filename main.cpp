@@ -77,6 +77,7 @@ static void signalHandler(int sig)
         
         // Set status to error before exiting
         setFileStatus(STATUS_ERROR, "Process terminated by signal");
+        notifyI3Blocks();
         
         // Use the canceled exit code for signal interruptions
         qInfo() << "Setting application exit code to:" << APP_EXIT_FAILURE_CANCELED << "(CANCELED)";
@@ -87,15 +88,15 @@ static void signalHandler(int sig)
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
-
-    // Configure logging format for simplicity
-    // (Alternatively, configure qInstallMessageHandler for advanced logging)
-    qSetMessagePattern("[%{type}] %{message}");
+    qSetMessagePattern("[%{time hh:mm:ss.zzz}] [%{type}] %{message}");
 
     qInfo() << "[INFO] Application started";
     
     // Set initial status to "ready"
-    setFileStatus(STATUS_READY);
+    if (!setFileStatus(STATUS_READY)) {
+        qCritical() << "Failed to set initial status to" << STATUS_FILE_PATH;
+        return APP_EXIT_FAILURE_GENERAL;
+    }
 
     // Check if an instance is already running by examining the lock file
     QFile lockFile(LOCK_FILE_PATH);
