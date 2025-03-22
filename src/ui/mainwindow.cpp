@@ -620,19 +620,13 @@ void MainWindow::onTranscriptionCompleted(const QString& transcribedText)
     
     // Log the transcription result to console
     qInfo() << "Transcription result:\n-----\n" << transcribedText << "\n-----";
-    qInfo() << "Exit code set to" << m_exitCode << "(SUCCESS), hiding window instead of exiting";
+    qInfo() << "Exit code set to" << m_exitCode << "(SUCCESS), hiding window immediately";
 
     // Set status to ready
     setFileStatus(STATUS_READY);
 
-    // Show success message briefly before hiding
-    m_statusLabel->setText("Transcription successful. Ready for next recording.");
-    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #4CFF64;");
-
-    // Short delay to allow logging to complete, then hide
-    QTimer::singleShot(1000, [this]() {
-        hideAndReset();
-    });
+    // Hide window immediately after successful transcription
+    hideAndReset();
 }
 
 void MainWindow::onTranscriptionFailed(const QString& errorMessage)
