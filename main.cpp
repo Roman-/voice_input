@@ -31,16 +31,11 @@ static void signalHandler(int sig)
             g_mainWindow->show();
             
             // Now clean up any previous files just before starting new recording
-            QFile leftoverAudioFile(OUTPUT_FILE_PATH);
-            if (leftoverAudioFile.exists()) {
-                leftoverAudioFile.remove();
-                qInfo() << "[DEBUG] Removed previous audio file:" << OUTPUT_FILE_PATH;
-            }
-            
-            QFile leftoverTranscriptionFile(TRANSCRIPTION_OUTPUT_PATH);
-            if (leftoverTranscriptionFile.exists()) {
-                leftoverTranscriptionFile.remove();
-                qInfo() << "[DEBUG] Removed previous transcription file:" << TRANSCRIPTION_OUTPUT_PATH;
+            for (const auto& f : QStringList{OUTPUT_FILE_PATH, TRANSCRIPTION_OUTPUT_PATH}) {
+                QFile file(f);
+                if (file.exists() && file.remove()) {
+                    qInfo() << "[DEBUG] Removed previous file:" << f;
+                }
             }
             
             // Start a new recording immediately - audio system is already initialized
@@ -65,18 +60,14 @@ static void signalHandler(int sig)
             g_mainWindow->cancelTranscription();
         }
         
-        // Remove lock file
-        QFile lockFile(LOCK_FILE_PATH);
-        if (lockFile.exists()) {
-            if (lockFile.remove()) {
-                qInfo() << "[INFO] Removed lock file:" << LOCK_FILE_PATH;
-            } else {
-                qWarning() << "[WARNING] Failed to remove lock file:" << LOCK_FILE_PATH;
+        // Remove application files
+        for (const auto& f : QStringList{OUTPUT_FILE_PATH, TRANSCRIPTION_OUTPUT_PATH, STATUS_FILE_PATH, LOCK_FILE_PATH}) {
+            QFile file(f);
+            if (file.exists() && file.remove()) {
+                qInfo() << "[INFO] Removed file:" << f;
             }
         }
         
-        // Set status to error before exiting
-        setFileStatus(STATUS_ERROR, "Process terminated by signal");
         notifyI3Blocks();
         
         // Use the canceled exit code for signal interruptions
@@ -176,18 +167,13 @@ int main(int argc, char *argv[])
     QObject::connect(&app, &QCoreApplication::aboutToQuit, [&](){
         recorder.stopRecording();
         
-        // Remove lock file
-        QFile lockFile(LOCK_FILE_PATH);
-        if (lockFile.exists()) {
-            if (lockFile.remove()) {
-                qInfo() << "[INFO] Removed lock file:" << LOCK_FILE_PATH;
-            } else {
-                qWarning() << "[WARNING] Failed to remove lock file:" << LOCK_FILE_PATH;
+        // Remove all application files
+        for (const auto& f : QStringList{OUTPUT_FILE_PATH, TRANSCRIPTION_OUTPUT_PATH, STATUS_FILE_PATH, LOCK_FILE_PATH}) {
+            QFile file(f);
+            if (file.exists() && file.remove()) {
+                qInfo() << "[INFO] Removed file:" << f;
             }
         }
-        
-        // Clear status file on exit
-        clearFileStatus();
         
         // Set the application exit code based on MainWindow's exit code
         if (g_mainWindow) {
@@ -197,16 +183,11 @@ int main(int argc, char *argv[])
     });
     
     // Clean up any leftover files
-    QFile leftoverAudioFile(OUTPUT_FILE_PATH);
-    if (leftoverAudioFile.exists()) {
-        leftoverAudioFile.remove();
-        qInfo() << "[DEBUG] Removed leftover audio file:" << OUTPUT_FILE_PATH;
-    }
-    
-    QFile leftoverTranscriptionFile(TRANSCRIPTION_OUTPUT_PATH);
-    if (leftoverTranscriptionFile.exists()) {
-        leftoverTranscriptionFile.remove();
-        qInfo() << "[DEBUG] Removed leftover transcription file:" << TRANSCRIPTION_OUTPUT_PATH;
+    for (const auto& f : QStringList{OUTPUT_FILE_PATH, TRANSCRIPTION_OUTPUT_PATH}) {
+        QFile file(f);
+        if (file.exists() && file.remove()) {
+            qInfo() << "[DEBUG] Removed leftover file:" << f;
+        }
     }
     
     // Initialize the audio system once at startup
