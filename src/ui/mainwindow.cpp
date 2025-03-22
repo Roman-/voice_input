@@ -373,14 +373,8 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
         if (m_transcriptionService && m_transcriptionService->isTranscribing()) {
             m_transcriptionService->cancelTranscription();
         }
-        
-        // Remove the output files
-        QFile outputFile(OUTPUT_FILE_PATH);
-        if (outputFile.exists()) {
-            outputFile.remove();
-            qInfo() << "[INFO] Output file removed:" << OUTPUT_FILE_PATH;
-        }
-        
+
+        // Remove the output file
         QFile transcriptionFile(TRANSCRIPTION_OUTPUT_PATH);
         if (transcriptionFile.exists()) {
             transcriptionFile.remove();
@@ -392,7 +386,7 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
         m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #FF6B6B;");
         
         // Wait briefly to show status, then quit application
-        QTimer::singleShot(500, [this]() {
+        QTimer::singleShot(200, [this]() {
             QApplication::exit(m_exitCode);
         });
     }

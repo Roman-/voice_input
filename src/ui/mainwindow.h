@@ -39,7 +39,7 @@ private slots:
 
 protected:
     // Override key press event to handle Enter/Escape keys
-    void keyPressEvent(QKeyEvent* event) override;
+    void keyPressEvent(QKeyEvent*) override;
 
 private:
     void createVolumeBar();
