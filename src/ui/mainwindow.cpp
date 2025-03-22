@@ -470,8 +470,7 @@ void MainWindow::onTranscribeButtonClicked()
         m_transcriptionService->refreshApiKey();
     }
 
-    const QString language = "en";
-    m_transcriptionService->transcribeAudio(OUTPUT_FILE_PATH, language);
+    m_transcriptionService->transcribeAudio(OUTPUT_FILE_PATH, m_languages[m_languageIndex]);
 }
 
 void MainWindow::onTranscriptionCompleted(const QString& transcribedText)

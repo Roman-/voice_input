@@ -59,6 +59,8 @@ private:
     QTimer         m_autoCloseTimer;
     int            m_autoCloseSeconds;
     int            m_exitCode;  // Exit code to use when application terminates
+    QVector<QString> m_languages{"en", "ru"};
+    int m_languageIndex = 0;
 };
 
 #endif // MAINWINDOW_H
