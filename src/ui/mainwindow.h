@@ -73,6 +73,7 @@ private:
     QVector<QString> m_languages{"en", "ru"};
     int m_languageIndex = 0;
     bool           m_isClosingPermanently;
+    bool m_pressCtrlVAfterCopy{true};
 };
 
 #endif // MAINWINDOW_H
