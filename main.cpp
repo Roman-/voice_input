@@ -26,21 +26,21 @@ static void signalHandler(int sig)
                 g_audioRecorder->stopRecording();
             }
             
-            // Clean up any previous files
+            // Show window first
+            g_mainWindow->show();
+            
+            // Now clean up any previous files just before starting new recording
             QFile leftoverAudioFile(OUTPUT_FILE_PATH);
             if (leftoverAudioFile.exists()) {
                 leftoverAudioFile.remove();
-                qInfo() << "[DEBUG] Removed leftover audio file:" << OUTPUT_FILE_PATH;
+                qInfo() << "[DEBUG] Removed previous audio file:" << OUTPUT_FILE_PATH;
             }
             
             QFile leftoverTranscriptionFile(TRANSCRIPTION_OUTPUT_PATH);
             if (leftoverTranscriptionFile.exists()) {
                 leftoverTranscriptionFile.remove();
-                qInfo() << "[DEBUG] Removed leftover transcription file:" << TRANSCRIPTION_OUTPUT_PATH;
+                qInfo() << "[DEBUG] Removed previous transcription file:" << TRANSCRIPTION_OUTPUT_PATH;
             }
-            
-            // Show window
-            g_mainWindow->show();
             
             // Start a new recording immediately - audio system is already initialized
             if (g_audioRecorder) {

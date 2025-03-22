@@ -459,8 +459,8 @@ void MainWindow::hideAndReset()
         m_recorder->stopRecording();
     }
     
-    // Reset UI elements for next use
-    cleanupForNextRecording();
+    // Reset UI elements for next use, but don't remove files
+    resetUIForNextRecording();
     
     // Pause the audio stream to stop listening to the microphone
     if (m_recorder) {
@@ -488,6 +488,12 @@ void MainWindow::cleanupForNextRecording()
         qInfo() << "[DEBUG] Removed transcription file for next recording:" << TRANSCRIPTION_OUTPUT_PATH;
     }
     
+    // Reset UI state
+    resetUIForNextRecording();
+}
+
+void MainWindow::resetUIForNextRecording()
+{
     // Reset volume display
     updateVolumeBar(0.0f);
     

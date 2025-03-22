@@ -52,7 +52,8 @@ private:
     void updateVolumeBar(float volume);
     void setupTranscriptionUI();
     void updateLanguageDisplay();
-    void cleanupForNextRecording();
+    void cleanupForNextRecording(); // Removes files and resets UI
+    void resetUIForNextRecording(); // Resets UI only without removing files
 
 private:
     AudioRecorder* m_recorder;
