@@ -45,6 +45,7 @@ private:
     void createVolumeBar();
     void updateVolumeBar(float volume);
     void setupTranscriptionUI();
+    void updateLanguageDisplay();
 
 private:
     AudioRecorder* m_recorder;

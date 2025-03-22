@@ -105,7 +105,7 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     m_hasApiKey = m_transcriptionService->hasApiKey();
     if (!m_hasApiKey) {
         m_transcriptionLabel->setStyleSheet("color: #FF6B6B;");
-        m_transcriptionLabel->setText("NO API KEY - Set OPENAI_API_KEY environment variable");
+        m_transcriptionLabel->setText(QString("Language: %1 | NO API KEY - Set OPENAI_API_KEY environment variable").arg(m_languages[m_languageIndex]));
     }
     
     // Set up auto-close timer for transcription errors
@@ -291,7 +291,7 @@ void MainWindow::onRecordingStopped()
     QFile recordingFile(OUTPUT_FILE_PATH);
     if (recordingFile.exists() && m_hasApiKey) {
         // Auto-start transcription
-        m_transcriptionLabel->setText("Automatically starting transcription...");
+        m_transcriptionLabel->setText(QString("Language: %1 | Automatically starting transcription...").arg(m_languages[m_languageIndex]));
         m_transcriptionLabel->setStyleSheet("color: #5CAAFF;");
         
         // Make sure the button is hidden during auto-transcription
@@ -305,7 +305,7 @@ void MainWindow::onRecordingStopped()
             onTranscribeButtonClicked();
         });
     } else if (!m_hasApiKey) {
-        m_transcriptionLabel->setText("NO API KEY - Transcription unavailable");
+        m_transcriptionLabel->setText(QString("Language: %1 | NO API KEY - Transcription unavailable").arg(m_languages[m_languageIndex]));
         m_transcriptionLabel->setStyleSheet("color: #FF6B6B;");
         
         // Hide the transcribe button since there's no API key
@@ -316,7 +316,7 @@ void MainWindow::onRecordingStopped()
             m_statusLabel->setText("Press Enter/Space to save and exit, or Esc to cancel");
         });
     } else {
-        m_transcriptionLabel->setText("Recording file not found");
+        m_transcriptionLabel->setText(QString("Language: %1 | Recording file not found").arg(m_languages[m_languageIndex]));
         m_transcriptionLabel->setStyleSheet("color: #FF6B6B;");
         
         // Hide the transcribe button since there's no recording file
@@ -333,6 +333,9 @@ void MainWindow::onRecordingStarted()
 {
     // Update UI when recording initialization starts
     m_statusLabel->setText("Initializing audio system...");
+    
+    // Refresh language display
+    updateLanguageDisplay();
 }
 
 void MainWindow::onAudioDeviceReady()
@@ -411,6 +414,14 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
         qInfo() << "[INFO] Enter/Space key pressed - exiting application with code:" << m_exitCode;
         QApplication::exit(m_exitCode);
     }
+    else if (event->key() == Qt::Key_L) {
+        // Cycle through available languages
+        m_languageIndex = (m_languageIndex + 1) % m_languages.size();
+        qInfo() << "[INFO] Language changed to:" << m_languages[m_languageIndex];
+        
+        // Update UI to show the current language
+        updateLanguageDisplay();
+    }
     else {
         QMainWindow::keyPressEvent(event);
     }
@@ -437,7 +448,16 @@ void MainWindow::setupTranscriptionUI()
     
     // Configure transcription status label
     m_transcriptionLabel->setStyleSheet("font-size: 10pt;");
-    m_transcriptionLabel->setText("Recording will be automatically transcribed when complete");
+    
+    // Initialize the language display
+    updateLanguageDisplay();
+}
+
+void MainWindow::updateLanguageDisplay()
+{
+    // Update the transcription label with language code directly from the array
+    m_transcriptionLabel->setText(QString("Language: %1 | Recording will be automatically transcribed when complete (Press L to change language)")
+                                .arg(m_languages[m_languageIndex]));
 }
 
 void MainWindow::onTranscribeButtonClicked()
@@ -453,7 +473,7 @@ void MainWindow::onTranscribeButtonClicked()
     // Check if the recording file exists
     QFile recordingFile(OUTPUT_FILE_PATH);
     if (!recordingFile.exists()) {
-        m_transcriptionLabel->setText("Error: Recording file not found");
+        m_transcriptionLabel->setText(QString("Language: %1 | Error: Recording file not found").arg(m_languages[m_languageIndex]));
         m_transcriptionLabel->setStyleSheet("color: #FF6B6B;");
         return;
     }
@@ -461,7 +481,7 @@ void MainWindow::onTranscribeButtonClicked()
     // Start the transcription process
     m_transcribeButton->setEnabled(false);
     m_transcriptionLabel->setStyleSheet("color: #5CAAFF;");
-    m_transcriptionLabel->setText("Starting transcription process...");
+    m_transcriptionLabel->setText(QString("Language: %1 | Starting transcription process...").arg(m_languages[m_languageIndex]));
     
     // Check environment again for API key (might have been updated)
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
@@ -479,12 +499,11 @@ void MainWindow::onTranscriptionCompleted(const QString& transcribedText)
     m_exitCode = APP_EXIT_SUCCESS;
     
     // Log the transcription result to console
-    qInfo() << "Transcription result:" << transcribedText;
-    qInfo() << "Exit code set to" << m_exitCode << "(SUCCESS)";
-    qInfo() << "Transcription completed successfully - exiting application";
-    
+    qInfo() << "Transcription result:\n-----\n" << transcribedText << "\n-----";
+    qInfo() << "Exit code set to" << m_exitCode << "(SUCCESS), exiting application";
+
     // Short delay to allow logging to complete, then exit
-    QTimer::singleShot(100, [this]() {
+    QTimer::singleShot(10, [this]() {
         QApplication::exit(m_exitCode);
     });
 }
@@ -506,7 +525,7 @@ void MainWindow::onTranscriptionFailed(const QString& errorMessage)
     
     // Update UI with error message
     m_transcriptionLabel->setStyleSheet("color: #FF6B6B;");
-    m_transcriptionLabel->setText(QString("Transcription failed: %1").arg(errorMessage));
+    m_transcriptionLabel->setText(QString("Language: %1 | Transcription failed: %2").arg(m_languages[m_languageIndex]).arg(errorMessage));
     
     // Update status label to show transcription failed rather than recording timer
     m_statusLabel->setText("Transcription Failed");
@@ -575,7 +594,7 @@ void MainWindow::onTranscriptionProgress(const QString& status)
 {
     // Update UI with progress status
     m_transcriptionLabel->setStyleSheet("color: #5CAAFF;");
-    m_transcriptionLabel->setText(status);
+    m_transcriptionLabel->setText(QString("Language: %1 | %2").arg(m_languages[m_languageIndex]).arg(status));
     
     // Hide the retry button during transcription
     m_transcribeButton->setVisible(false);

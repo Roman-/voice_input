@@ -124,7 +124,7 @@ void TestTranscription::testTranscription()
     // Start transcription
     qInfo() << "Starting transcription of test file using REAL OpenAI API:" << testAudioPath;
     qInfo() << "This may take a minute or two to complete...";
-    transcriptionService->transcribeAudio(testAudioPath);
+    transcriptionService->transcribeAudio(testAudioPath, "en"); // Default to English for tests
     
     // Wait for completion or failure (timeout after 120 seconds for real API call)
     const int maxWaitMs = 120000;  // 2 minutes
@@ -200,7 +200,7 @@ void TestTranscription::testMockTranscription()
     
     // Start transcription
     qInfo() << "Starting transcription of test file using MOCK service:" << testAudioPath;
-    transcriptionService->transcribeAudio(testAudioPath);
+    transcriptionService->transcribeAudio(testAudioPath, "en"); // Default to English for tests
     
     // Wait for completion or failure (maximum 10 seconds for mock service)
     const int maxWaitMs = 10000;  // 10 seconds
