@@ -475,8 +475,9 @@ void MainWindow::onTranscribeButtonClicked()
         // Refresh the transcription service with the latest API key
         m_transcriptionService->refreshApiKey();
     }
-    
-    m_transcriptionService->transcribeAudio(OUTPUT_FILE_PATH);
+
+    const QString language = "en";
+    m_transcriptionService->transcribeAudio(OUTPUT_FILE_PATH, language);
 }
 
 void MainWindow::onTranscriptionCompleted(const QString& transcribedText)

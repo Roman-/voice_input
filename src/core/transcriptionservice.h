@@ -8,10 +8,10 @@ class TranscriptionService : public QObject
     Q_OBJECT
 public:
     explicit TranscriptionService(QObject* parent = nullptr) : QObject(parent) {}
-    virtual ~TranscriptionService() {}
+    ~TranscriptionService() override = default;
 
     // Start transcription of the given audio file
-    virtual void transcribeAudio(const QString& audioFilePath) = 0;
+    virtual void transcribeAudio(const QString& audioFilePath, const QString& language) = 0;
     
     // Cancel ongoing transcription
     virtual void cancelTranscription() = 0;

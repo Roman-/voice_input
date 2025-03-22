@@ -16,7 +16,7 @@ public:
     ~OpenAiTranscriptionService() override;
 
     // Start transcription of the given audio file
-    void transcribeAudio(const QString& audioFilePath) override;
+    void transcribeAudio(const QString& audioFilePath, const QString& language) override;
     
     // Cancel ongoing transcription
     void cancelTranscription() override;

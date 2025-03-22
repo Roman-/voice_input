@@ -29,7 +29,7 @@ OpenAiTranscriptionService::~OpenAiTranscriptionService()
     cancelTranscription();
 }
 
-void OpenAiTranscriptionService::transcribeAudio(const QString& audioFilePath)
+void OpenAiTranscriptionService::transcribeAudio(const QString& audioFilePath, const QString& language)
 {
     // Check if we're already transcribing
     if (m_isTranscribing) {
@@ -99,7 +99,7 @@ void OpenAiTranscriptionService::transcribeAudio(const QString& audioFilePath)
     QHttpPart languagePart;
     languagePart.setHeader(QNetworkRequest::ContentDispositionHeader, 
                           QVariant("form-data; name=\"language\""));
-    languagePart.setBody("en");
+    languagePart.setBody(language.toUtf8());
     multiPart->append(languagePart);
     
     // Add temperature parameter

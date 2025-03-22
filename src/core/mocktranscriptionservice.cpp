@@ -24,7 +24,7 @@ MockTranscriptionService::~MockTranscriptionService()
     cancelTranscription();
 }
 
-void MockTranscriptionService::transcribeAudio(const QString& audioFilePath)
+void MockTranscriptionService::transcribeAudio(const QString& audioFilePath, const QString& language)
 {
     // Check if we're already transcribing
     if (m_isTranscribing) {
