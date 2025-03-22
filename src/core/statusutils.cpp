@@ -4,6 +4,16 @@
 #include <QFile>
 #include <QTextStream>
 #include <QDebug>
+#include <QProcess>
+
+// pkill -RTMIN+2 i3blocks
+void notifyI3blocks() {
+    QProcess process;
+    process.start("pkill", QStringList() << "-RTMIN+2" << "i3blocks");
+    if (!process.waitForFinished()) {
+        qWarning() << "Failed to send signal to i3blocks:" << process.errorString();
+    }
+}
 
 bool setFileStatus(const QString& status, const QString& errorMessage)
 {
@@ -23,6 +33,7 @@ bool setFileStatus(const QString& status, const QString& errorMessage)
     
     statusFile.close();
     qDebug() << "Status set to:" << status << (errorMessage.isEmpty() ? "" : (" - " + errorMessage));
+    notifyI3blocks();
     return true;
 }
 

@@ -5,7 +5,6 @@
 
 // Status values
 constexpr auto STATUS_READY = "ready";
-constexpr auto STATUS_IDLE = "idle";
 constexpr auto STATUS_BUSY = "busy";
 constexpr auto STATUS_ERROR = "error";
 
