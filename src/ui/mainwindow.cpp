@@ -9,6 +9,7 @@
 #include <QUrl>
 #include <QDir>
 #include <QCloseEvent>
+#include <QShowEvent>
 
 #include "core/audiorecorder.h"
 #include "core/transcriptionservice.h"
@@ -408,6 +409,11 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
         m_statusLabel->setText("Recording canceled.");
         m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #FF6B6B;");
         
+        // Pause the audio stream to stop listening to the microphone
+        if (m_recorder) {
+            m_recorder->pauseAudioStream();
+        }
+        
         // Hide the window instead of exiting
         QTimer::singleShot(200, [this]() {
             hide();
@@ -462,6 +468,33 @@ void MainWindow::closeEvent(QCloseEvent* event)
         event->ignore();
         hideAndReset();
     }
+}
+
+void MainWindow::showEvent(QShowEvent* event)
+{
+    QMainWindow::showEvent(event);
+    
+    // Reset language index to zero
+    m_languageIndex = 0;
+    updateLanguageDisplay();
+    
+    // Restore the default UI colors
+    QPalette pal = palette();
+    pal.setColor(QPalette::Window, QColor(30, 30, 40));        // Dark blue-gray background
+    pal.setColor(QPalette::WindowText, QColor(220, 220, 220)); // Light gray text
+    pal.setColor(QPalette::Text, QColor(220, 220, 220));       // Light gray text for widgets
+    setPalette(pal);
+    
+    // Reset status text style to be bold and larger with distinctive color
+    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #5CAAFF;");
+    m_statusLabel->setText("Initializing... (Press Enter/Space to save, Esc to cancel)");
+    
+    // Restart the audio stream if it was paused
+    if (m_recorder && !m_recorder->isAudioStreamActive()) {
+        m_recorder->resumeAudioStream();
+    }
+    
+    qInfo() << "[INFO] Window is now shown, UI reset with language index:" << m_languageIndex;
 }
 
 void MainWindow::hideAndReset()

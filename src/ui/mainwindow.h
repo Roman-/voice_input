@@ -46,6 +46,9 @@ protected:
     
     // Override close event to handle window close requests
     void closeEvent(QCloseEvent* event) override;
+    
+    // Override show event to reset UI when window is shown
+    void showEvent(QShowEvent* event) override;
 
 private:
     void createVolumeBar();
