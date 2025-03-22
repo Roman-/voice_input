@@ -284,6 +284,9 @@ void MainWindow::onRecordingStopped()
     setPalette(pal);
     m_statusLabel->setPalette(pal);
     
+    // Reset volume bar when recording stops
+    updateVolumeBar(0.0f);
+    
     // Check for valid recording and API key
     QFile recordingFile(OUTPUT_FILE_PATH);
     if (recordingFile.exists() && m_hasApiKey) {
@@ -595,6 +598,9 @@ void MainWindow::onTranscriptionProgress(const QString& status)
     // Update status label to show transcription progress rather than recording timer
     m_statusLabel->setText("Transcription in Progress");
     m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #5CAAFF;");
+    
+    // Reset volume bar to zero when transcription starts
+    updateVolumeBar(0.0f);
 }
 
 void MainWindow::cancelTranscription()
