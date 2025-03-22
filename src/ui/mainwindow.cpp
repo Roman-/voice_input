@@ -471,7 +471,7 @@ void MainWindow::onTranscribeButtonClicked()
     // Check if the recording file exists
     QFile recordingFile(OUTPUT_FILE_PATH);
     if (!recordingFile.exists()) {
-        m_transcriptionLabel->setText(QString("Language: %1 | Error: Recording file not found").arg(m_languages[m_languageIndex]));
+        m_transcriptionLabel->setText("Error: Recording file not found");
         m_transcriptionLabel->setStyleSheet("color: #FF6B6B;");
         return;
     }
@@ -479,7 +479,7 @@ void MainWindow::onTranscribeButtonClicked()
     // Start the transcription process
     m_transcribeButton->setEnabled(false);
     m_transcriptionLabel->setStyleSheet("color: #5CAAFF;");
-    m_transcriptionLabel->setText(QString("Language: %1 | Starting transcription process...").arg(m_languages[m_languageIndex]));
+    m_transcriptionLabel->setText(QString("Starting transcription process, lang: %1...").arg(m_languages[m_languageIndex]));
     
     // Check environment again for API key (might have been updated)
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
