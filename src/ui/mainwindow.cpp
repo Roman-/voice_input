@@ -605,9 +605,12 @@ void MainWindow::onTranscriptionCompleted(const QString& transcribedText)
 
     // Set status to ready
     setFileStatus(STATUS_READY);
+    const bool pressCtrlV = true; // TODO config?
 
     // Hide window immediately after successful transcription
     hideAndReset();
+
+    copyTranscriptionToClipboard(pressCtrlV);
 }
 
 void MainWindow::onTranscriptionFailed(const QString& errorMessage)

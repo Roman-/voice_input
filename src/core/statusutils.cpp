@@ -6,15 +6,6 @@
 #include <QDebug>
 #include <QProcess>
 
-// pkill -RTMIN+2 i3blocks
-void notifyI3blocks() {
-    QProcess process;
-    process.start("pkill", QStringList() << "-RTMIN+2" << "i3blocks");
-    if (!process.waitForFinished()) {
-        qWarning() << "Failed to send signal to i3blocks:" << process.errorString();
-    }
-}
-
 bool setFileStatus(const QString& status, const QString& errorMessage)
 {
     QFile statusFile(STATUS_FILE_PATH);
@@ -33,7 +24,7 @@ bool setFileStatus(const QString& status, const QString& errorMessage)
     
     statusFile.close();
     qDebug() << "Status set to:" << status << (errorMessage.isEmpty() ? "" : (" - " + errorMessage));
-    notifyI3blocks();
+    notifyI3Blocks();
     return true;
 }
 
@@ -46,5 +37,24 @@ void clearFileStatus()
         } else {
             qWarning() << "Failed to remove status file:" << STATUS_FILE_PATH;
         }
+    }
+}
+
+void notifyI3Blocks() {
+    QProcess::execute("pkill", {"-RTMIN+2", "i3blocks"}); // pkill -RTMIN+2 i3blocks
+}
+
+void copyTranscriptionToClipboard(bool andPressCtrlV) {
+    QString command = QString("tr -d '\\n' < %1 | xclip -i -sel c").arg(TRANSCRIPTION_OUTPUT_PATH);
+    if (andPressCtrlV) {
+        command += " && xdotool key ctrl+v";
+    }
+
+    int exitCode = QProcess::execute("/bin/sh", {"-c", command});
+    if (exitCode != 0) {
+        qWarning() << "Failed to copy transcription to clipboard. Exit code:" << exitCode;
+    } else {
+        qDebug() << "Transcription copied to clipboard"
+                 << (andPressCtrlV ? "and Ctrl+V simulated." : ".");
     }
 }

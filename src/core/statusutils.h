@@ -14,4 +14,8 @@ bool setFileStatus(const QString& status, const QString& errorMessage = QString(
 // Clear the status file (usually on app exit)
 void clearFileStatus();
 
+void notifyI3Blocks();
+
+void copyTranscriptionToClipboard(bool andPressCtrlV);
+
 #endif // STATUSUTILS_H
