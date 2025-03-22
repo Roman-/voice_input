@@ -413,7 +413,7 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
             m_recorder->pauseAudioStream();
         }
         
-        // Hide the window instead of exiting
+        // Hide the window
         QTimer::singleShot(200, [this]() {
             hide();
         });
@@ -515,25 +515,6 @@ void MainWindow::hideAndReset()
     hide();
     
     qInfo() << "[INFO] Window hidden, microphone paused, ready for next signal";
-}
-
-void MainWindow::cleanupForNextRecording()
-{
-    // Clean up files
-    QFile audioFile(OUTPUT_FILE_PATH);
-    if (audioFile.exists()) {
-        audioFile.remove();
-        qInfo() << "[DEBUG] Removed audio file for next recording:" << OUTPUT_FILE_PATH;
-    }
-    
-    QFile transcriptionFile(TRANSCRIPTION_OUTPUT_PATH);
-    if (transcriptionFile.exists()) {
-        transcriptionFile.remove();
-        qInfo() << "[DEBUG] Removed transcription file for next recording:" << TRANSCRIPTION_OUTPUT_PATH;
-    }
-    
-    // Reset UI state
-    resetUIForNextRecording();
 }
 
 void MainWindow::resetUIForNextRecording()
