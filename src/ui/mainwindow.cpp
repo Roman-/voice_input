@@ -455,9 +455,7 @@ void MainWindow::setupTranscriptionUI()
 
 void MainWindow::updateLanguageDisplay()
 {
-    // Update the transcription label with language code directly from the array
-    m_transcriptionLabel->setText(QString("Language: %1 | Recording will be automatically transcribed when complete (Press L to change language)")
-                                .arg(m_languages[m_languageIndex]));
+    m_transcriptionLabel->setText(QString("%1 | press L to change language").arg(m_languages[m_languageIndex]));
 }
 
 void MainWindow::onTranscribeButtonClicked()
