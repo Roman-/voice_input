@@ -160,16 +160,27 @@ void AudioRecorder::stopRecording()
     // Finalize MP3 encoding
     if (m_mp3Initialized) {
         try {
+            // Write MP3 file close tag
+            const char id3v1Tag[128] = {'T', 'A', 'G', 0}; // Minimal ID3v1 tag
+            m_outputFile.write(id3v1Tag, 128);
+
             // Flush encoder with proper error handling
             QByteArray finalData = encodeToMP3(nullptr, 0);
             if (!finalData.isEmpty()) {
-                m_outputFile.write(finalData);
+                if (!m_outputFile.write(finalData)) {
+                    qWarning() << "Failed to write MP3 final data:" << m_outputFile.errorString();
+                }
             }
             
-            // Clean up encoder
+            // Make sure all data is written to disk
+            m_outputFile.flush();
+            
+            // Clean up encoder - must happen after all data is written
             finalizeMP3Encoder();
         } catch (const std::exception& e) {
             qWarning() << "Exception during MP3 finalization:" << e.what();
+        } catch (...) {
+            qWarning() << "Unknown exception during MP3 finalization";
         }
     }
 
@@ -230,6 +241,12 @@ bool AudioRecorder::initializeMP3Encoder()
     lame_set_quality(m_lameGlobal, 2); // 0=best, 9=worst
     lame_set_mode(m_lameGlobal, NUM_CHANNELS == 1 ? MONO : STEREO);
     
+    // Add more conservative settings to avoid buffer inconsistencies
+    lame_set_VBR(m_lameGlobal, vbr_off);  // Use constant bitrate
+    lame_set_error_protection(m_lameGlobal, 1); // Enable error protection
+    lame_set_strict_ISO(m_lameGlobal, 1); // Enforce strict ISO compliance
+    lame_set_disable_reservoir(m_lameGlobal, 1); // Disable bit reservoir to avoid buffer issues
+    
     // Initialize the encoder
     if (lame_init_params(m_lameGlobal) < 0) {
         qCritical() << "Failed to initialize LAME parameters";
@@ -254,7 +271,7 @@ void AudioRecorder::finalizeMP3Encoder()
 
 QByteArray AudioRecorder::encodeToMP3(const short* inputBuffer, int inputSize)
 {
-    if (!m_mp3Initialized) {
+    if (!m_mp3Initialized || !m_lameGlobal) {
         return QByteArray();
     }
 
@@ -270,28 +287,44 @@ QByteArray AudioRecorder::encodeToMP3(const short* inputBuffer, int inputSize)
     }
 
     // MP3 buffer needs to be 1.25x + 7200 bytes larger than the PCM data
-    int mp3BufferSize = numSamples * 1.25 + 7200;
+    // Add extra safety margin for very small inputs
+    int mp3BufferSize = numSamples * 1.25 + 16384;  // Use larger buffer for safety
     result.resize(mp3BufferSize);
     
     int bytesEncoded = 0;
     
-    if (numSamples > 0) {
-        // Encode audio samples
-        bytesEncoded = lame_encode_buffer(
-            m_lameGlobal,
-            inputBuffer,      // left channel (mono = only channel)
-            nullptr,          // right channel (unused for mono)
-            numSamples,
-            reinterpret_cast<unsigned char*>(result.data()),
-            result.size()
-        );
-    } else {
-        // Flush remaining MP3 data - use safer flush_nogap instead of regular flush
-        bytesEncoded = lame_encode_flush_nogap(
-            m_lameGlobal,
-            reinterpret_cast<unsigned char*>(result.data()),
-            result.size()
-        );
+    try {
+        if (numSamples > 0) {
+            // For regular encoding, use the simpler lame_encode_buffer_interleaved for more stable behavior
+            // Create an interleaved buffer even for mono (safer approach)
+            short* interleaved = new short[numSamples];
+            memcpy(interleaved, inputBuffer, numSamples * sizeof(short));
+            
+            bytesEncoded = lame_encode_buffer_interleaved(
+                m_lameGlobal,
+                interleaved,   // Interleaved buffer
+                numSamples,    // For interleaved, this is number of samples per channel
+                reinterpret_cast<unsigned char*>(result.data()),
+                result.size()
+            );
+            
+            delete[] interleaved;
+        } else {
+            // For final flush, use a different approach with mp3_size() and get_lametag_frame
+            // This is more stable than flush_nogap for final frame
+            unsigned char mp3buffer[16384];
+            int mp3size = lame_encode_flush(m_lameGlobal, mp3buffer, sizeof(mp3buffer));
+            
+            if (mp3size > 0) {
+                result = QByteArray(reinterpret_cast<char*>(mp3buffer), mp3size);
+                bytesEncoded = mp3size;
+            } else {
+                bytesEncoded = 0;
+            }
+        }
+    } catch (...) {
+        qWarning() << "Exception in MP3 encoding";
+        return QByteArray();
     }
     
     if (bytesEncoded < 0) {
@@ -308,8 +341,11 @@ QByteArray AudioRecorder::encodeToMP3(const short* inputBuffer, int inputSize)
         bytesEncoded = mp3BufferSize;
     }
     
-    // Resize to actual encoded size
-    result.resize(bytesEncoded);
+    // If we created a new array for final flush, no need to resize
+    if (numSamples > 0) {
+        result.resize(bytesEncoded);
+    }
+    
     return result;
 }
 
