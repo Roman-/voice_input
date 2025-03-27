@@ -2,6 +2,7 @@
 #define STATUSUTILS_H
 
 #include <QString>
+#include <QColor>
 
 // Status values
 constexpr auto STATUS_READY = "ready";
@@ -17,5 +18,8 @@ void clearFileStatus();
 void notifyI3Blocks();
 
 void copyTranscriptionToClipboard(bool andPressCtrlV);
+
+// Get color for language indicator based on language code
+QColor getLanguageColor(const QString& languageCode);
 
 #endif // STATUSUTILS_H

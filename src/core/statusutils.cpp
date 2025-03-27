@@ -58,3 +58,11 @@ void copyTranscriptionToClipboard(bool andPressCtrlV) {
                  << (andPressCtrlV ? "and Ctrl+V simulated." : ".");
     }
 }
+
+QColor getLanguageColor(const QString& languageCode) {
+    if (languageCode.toLower() == "en") {
+        return QColor("#5CAAFF"); // Blue
+    } else {
+        return QColor("#FF6B6B"); // default to Red
+    }
+}
