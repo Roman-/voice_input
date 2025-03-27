@@ -147,18 +147,30 @@ void AudioRecorder::stopRecording()
         return;
 
     qDebug() << "stopRecording() called";
+    
+    // Pause the audio stream first to prevent new data from being processed
+    if (isAudioStreamActive()) {
+        pauseAudioStream();
+    }
+    
+    // Use mutex to ensure no audio processing is happening during finalization
+    QMutexLocker locker(&m_dataMutex);
     m_isRecording = false;
 
     // Finalize MP3 encoding
     if (m_mp3Initialized) {
-        // Flush encoder
-        QByteArray finalData = encodeToMP3(nullptr, 0);
-        if (!finalData.isEmpty()) {
-            m_outputFile.write(finalData);
+        try {
+            // Flush encoder with proper error handling
+            QByteArray finalData = encodeToMP3(nullptr, 0);
+            if (!finalData.isEmpty()) {
+                m_outputFile.write(finalData);
+            }
+            
+            // Clean up encoder
+            finalizeMP3Encoder();
+        } catch (const std::exception& e) {
+            qWarning() << "Exception during MP3 finalization:" << e.what();
         }
-        
-        // Clean up encoder
-        finalizeMP3Encoder();
     }
 
     // Close output file
@@ -274,8 +286,8 @@ QByteArray AudioRecorder::encodeToMP3(const short* inputBuffer, int inputSize)
             result.size()
         );
     } else {
-        // Flush remaining MP3 data
-        bytesEncoded = lame_encode_flush(
+        // Flush remaining MP3 data - use safer flush_nogap instead of regular flush
+        bytesEncoded = lame_encode_flush_nogap(
             m_lameGlobal,
             reinterpret_cast<unsigned char*>(result.data()),
             result.size()
@@ -285,6 +297,15 @@ QByteArray AudioRecorder::encodeToMP3(const short* inputBuffer, int inputSize)
     if (bytesEncoded < 0) {
         qWarning() << "MP3 encoding error:" << bytesEncoded;
         return QByteArray();
+    } else if (bytesEncoded == 0) {
+        // No bytes to encode, return empty array
+        return QByteArray();
+    }
+    
+    // Safety check before resizing
+    if (bytesEncoded > mp3BufferSize) {
+        qWarning() << "MP3 encoding buffer overflow, limiting output";
+        bytesEncoded = mp3BufferSize;
     }
     
     // Resize to actual encoded size
@@ -425,9 +446,15 @@ void AudioRecorder::handleAudioData(const void* inputBuffer, unsigned long frame
 
     // Encode and write audio data if encoder is ready
     if (m_mp3Initialized) {
-        QByteArray encodedData = encodeToMP3(buffer, frames * sizeof(short));
-        if (!encodedData.isEmpty()) {
-            m_outputFile.write(encodedData);
+        try {
+            QByteArray encodedData = encodeToMP3(buffer, frames * sizeof(short));
+            if (!encodedData.isEmpty()) {
+                if (!m_outputFile.write(encodedData)) {
+                    qWarning() << "Failed to write MP3 data to file:" << m_outputFile.errorString();
+                }
+            }
+        } catch (const std::exception& e) {
+            qWarning() << "Exception during MP3 encoding:" << e.what();
         }
     }
 }
