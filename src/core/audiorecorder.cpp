@@ -254,7 +254,7 @@ void AudioRecorder::finalizeMP3Encoder()
 
 QByteArray AudioRecorder::encodeToMP3(const short* inputBuffer, int inputSize)
 {
-    if (!m_mp3Initialized) {
+    if (!m_mp3Initialized || !m_lameGlobal) {
         return QByteArray();
     }
 
