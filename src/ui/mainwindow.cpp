@@ -26,6 +26,7 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
       m_transcribeButton(new QPushButton(this)),
       m_hasApiKey(false),
       m_exitCode(APP_EXIT_FAILURE_GENERAL), // Default to failure exit code until successful transcription
+      m_languageIndex(std::max(m_languages.indexOf(getLanguageBasedOnKeyboardLayout()), 0)),
       m_isClosingPermanently(false)
 {
     // Set window properties
@@ -477,8 +478,8 @@ void MainWindow::showEvent(QShowEvent* event)
 {
     QMainWindow::showEvent(event);
     
-    // Reset language index to zero
-    m_languageIndex = 0;
+    // Set language index based on keyboard layout
+    m_languageIndex = getLanguageBasedOnKeyboardLayout() == "ru" ? 1 : 0;
     updateLanguageDisplay();
     
     // Restore the default UI colors

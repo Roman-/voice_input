@@ -71,7 +71,7 @@ private:
     int            m_autoCloseSeconds;
     int            m_exitCode;  // Exit code to use when application terminates
     QVector<QString> m_languages{"en", "ru"};
-    int m_languageIndex = 0;
+    int m_languageIndex;
     bool           m_isClosingPermanently;
     bool m_pressCtrlVAfterCopy{true};
 };
