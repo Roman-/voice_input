@@ -13,14 +13,14 @@
 
 #include "core/audiorecorder.h"
 #include "core/transcriptionservice.h"
-#include "core/transcriptionfactory.h"
+#include "core/openaitranscriptionservice.h"
 #include "core/statusutils.h"
 #include "config/config.h"
 
 MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     : QMainWindow(parent),
       m_recorder(recorder),
-      m_transcriptionService(TranscriptionFactory::createTranscriptionService(this)),
+      m_transcriptionService(new OpenAiTranscriptionService(this)),
       m_statusLabel(new QLabel(this)),
       m_transcriptionLabel(new QLabel(this)),
       m_transcribeButton(new QPushButton(this)),
@@ -318,7 +318,9 @@ void MainWindow::onRecordingStopped()
         QTimer::singleShot(1000, this, [this]() {
             m_statusLabel->setText("Press Enter/Space to save and exit, or Esc to cancel");
         });
-    } else {
+    } else if (isVisible()) {
+        // Only show "Recording file not found" message if we're visible
+        // This prevents showing error after cancellation and reopening
         m_transcriptionLabel->setText("Recording file not found");
         m_transcriptionLabel->setStyleSheet("color: #FF6B6B;");
         
@@ -405,6 +407,11 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
         m_statusLabel->setText("Recording canceled.");
         m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #FF6B6B;");
         
+        // Also reset transcription label to avoid stale messages on next open
+        m_transcriptionLabel->setStyleSheet("color: #5CAAFF; font-size: 12pt;");
+        m_transcriptionLabel->setText("Ready for transcription");
+        m_transcribeButton->setVisible(false);
+        
         // Pause the audio stream to stop listening to the microphone
         if (m_recorder) {
             m_recorder->pauseAudioStream();
@@ -474,6 +481,11 @@ void MainWindow::showEvent(QShowEvent* event)
     // Reset status text style to be bold and larger with distinctive color
     m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #5CAAFF;");
     m_statusLabel->setText("Initializing... (Press Enter/Space to save, Esc to cancel)");
+    
+    // Reset transcription label to avoid stale messages
+    m_transcriptionLabel->setStyleSheet("color: #5CAAFF; font-size: 12pt;");
+    m_transcriptionLabel->setText("Ready for transcription");
+    m_transcribeButton->setVisible(false);
     
     // Restart the audio stream if it was paused
     if (m_recorder && !m_recorder->isAudioStreamActive()) {
