@@ -15,6 +15,15 @@ constexpr float VOLUME_SCALING_FACTOR = 5.0f;  // Amplify volume for better visu
 constexpr float VOLUME_LOG_BASE = 20.0f;       // Higher values make small sounds more visible
 constexpr float VOLUME_MIN_THRESHOLD = 0.001f; // Minimum volume to register any display
 
+// Base styles with consistent formatting
+constexpr auto STYLE_STATUS_NEUTRAL = "font-weight: bold; font-size: 12pt; color: #5CAAFF;";
+constexpr auto STYLE_STATUS_SUCCESS = "font-weight: bold; font-size: 12pt; color: #4CFF64;";
+constexpr auto STYLE_STATUS_ERROR = "font-weight: bold; font-size: 12pt; color: #FF6B6B;";
+
+// Transcription text styles
+constexpr auto STYLE_TRANSCRIPTION_NEUTRAL = "color: #5CAAFF; font-size: 10pt;";
+constexpr auto STYLE_TRANSCRIPTION_ERROR = "color: #FF6B6B; font-size: 10pt;";
+
 // Exit Codes
 constexpr int APP_EXIT_SUCCESS = 0;             // Successful transcription
 constexpr int APP_EXIT_FAILURE_GENERAL = 1;     // General failure

@@ -76,7 +76,7 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     m_transcriptionLabel->setPalette(pal);
     
     // Set status text style to be bold and larger with distinctive color
-    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #5CAAFF;");
+    m_statusLabel->setStyleSheet(STYLE_STATUS_NEUTRAL);
     
     // Show initializing state immediately
     m_statusLabel->setText("Initializing... (Press Enter/Space to save, Esc to cancel)");
@@ -104,7 +104,7 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     // Check for API key
     m_hasApiKey = m_transcriptionService->hasApiKey();
     if (!m_hasApiKey) {
-        m_transcriptionLabel->setStyleSheet("color: #FF6B6B;");
+        m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_ERROR);
         m_transcriptionLabel->setText("NO API KEY - Set OPENAI_API_KEY environment variable");
     }
     
@@ -276,7 +276,7 @@ void MainWindow::updateVolumeBar(float volume)
 void MainWindow::onRecordingStopped()
 {
     m_statusLabel->setText("Recording Stopped. File saved.");
-    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #4CFF64;");
+    m_statusLabel->setStyleSheet(STYLE_STATUS_SUCCESS);
     
     // Change background to indicate recording has stopped
     QPalette pal = palette();
@@ -294,7 +294,7 @@ void MainWindow::onRecordingStopped()
     if (recordingFile.exists() && m_hasApiKey) {
         // Auto-start transcription
         m_transcriptionLabel->setText("Automatically starting transcription...");
-        m_transcriptionLabel->setStyleSheet("color: #5CAAFF;");
+        m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_NEUTRAL);
         
         // Make sure the button is hidden during auto-transcription
         m_transcribeButton->setVisible(false);
@@ -308,7 +308,7 @@ void MainWindow::onRecordingStopped()
         });
     } else if (!m_hasApiKey) {
         m_transcriptionLabel->setText("NO API KEY - Transcription unavailable");
-        m_transcriptionLabel->setStyleSheet("color: #FF6B6B;");
+        m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_ERROR);
         
         // Hide the transcribe button since there's no API key
         m_transcribeButton->setVisible(false);
@@ -321,7 +321,7 @@ void MainWindow::onRecordingStopped()
         // Only show "Recording file not found" message if we're visible
         // This prevents showing error after cancellation and reopening
         m_transcriptionLabel->setText("Recording file not found");
-        m_transcriptionLabel->setStyleSheet("color: #FF6B6B;");
+        m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_ERROR);
         
         // Hide the transcribe button since there's no recording file
         m_transcribeButton->setVisible(false);
@@ -346,7 +346,7 @@ void MainWindow::onAudioDeviceReady()
 {
     // Update UI when audio device is fully ready and recording is actually happening
     m_statusLabel->setText("Recording in progress... (Press Enter/Space to save, Esc to cancel)");
-    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #4CFF64;");
+    m_statusLabel->setStyleSheet(STYLE_STATUS_SUCCESS);
     
     // Change background to indicate active recording
     QPalette pal = palette();
@@ -404,10 +404,10 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
         
         // Update UI
         m_statusLabel->setText("Recording canceled.");
-        m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #FF6B6B;");
+        m_statusLabel->setStyleSheet(STYLE_STATUS_ERROR);
         
         // Also reset transcription label to avoid stale messages on next open
-        m_transcriptionLabel->setStyleSheet("color: #5CAAFF; font-size: 12pt;");
+        m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_NEUTRAL);
         m_transcriptionLabel->setText("Ready for transcription");
         m_transcribeButton->setVisible(false);
         
@@ -482,7 +482,7 @@ void MainWindow::showEvent(QShowEvent* event)
     m_statusLabel->setText("Initializing... (Press Enter/Space to save, Esc to cancel)");
     
     // Reset transcription label to avoid stale messages
-    m_transcriptionLabel->setStyleSheet("color: #5CAAFF; font-size: 12pt;");
+    m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_NEUTRAL);
     m_transcriptionLabel->setText("Ready for transcription");
     m_transcribeButton->setVisible(false);
     
@@ -548,7 +548,7 @@ void MainWindow::setupTranscriptionUI()
                                      "}");
     
     // Configure transcription status label
-    m_transcriptionLabel->setStyleSheet("color: #5CAAFF; font-size: 10pt;");
+    m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_NEUTRAL);
     m_transcriptionLabel->setText("Ready for transcription");
 }
 
@@ -567,13 +567,13 @@ void MainWindow::onTranscribeButtonClicked()
     QFile recordingFile(OUTPUT_FILE_PATH);
     if (!recordingFile.exists()) {
         m_transcriptionLabel->setText("Error: Recording file not found");
-        m_transcriptionLabel->setStyleSheet("color: #FF6B6B;");
+        m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_ERROR);
         return;
     }
     
     // Start the transcription process
     m_transcribeButton->setEnabled(false);
-    m_transcriptionLabel->setStyleSheet("color: #5CAAFF;");
+    m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_NEUTRAL);
     m_transcriptionLabel->setText("Starting transcription process...");
     
     // Check environment again for API key (might have been updated)
@@ -623,12 +623,12 @@ void MainWindow::onTranscriptionFailed(const QString& errorMessage)
     setFileStatus(STATUS_ERROR, errorMessage);
     
     // Update UI with error message
-    m_transcriptionLabel->setStyleSheet("color: #FF6B6B;");
+    m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_ERROR);
     m_transcriptionLabel->setText(QString("Transcription failed: %1").arg(errorMessage));
 
     // Update status label to show transcription failed rather than recording timer
     m_statusLabel->setText("Transcription Failed");
-    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #FF6B6B;");
+    m_statusLabel->setStyleSheet(STYLE_STATUS_ERROR);
     
     // Check environment again for API key (might have been updated)
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
@@ -692,7 +692,7 @@ void MainWindow::onTranscriptionFailed(const QString& errorMessage)
 void MainWindow::onTranscriptionProgress(const QString& status)
 {
     // Update UI with progress status
-    m_transcriptionLabel->setStyleSheet("color: #5CAAFF;");
+    m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_NEUTRAL);
     m_transcriptionLabel->setText(status);
     
     // Hide the retry button during transcription
