@@ -18,35 +18,33 @@ static MainWindow* g_mainWindow = nullptr;
 static void signalHandler(int sig)
 {
     qInfo() << "[INFO] Received signal:" << sig;
-    
+
     // Handle SIGUSR1 (user signal 1) to show window and start recording
-    if (sig == SIGUSR1) {
-        if (g_mainWindow && !g_mainWindow->isVisible()) {
-            // Ensure any existing recording is stopped
-            if (g_audioRecorder && g_audioRecorder->isRecording()) {
-                g_audioRecorder->stopRecording();
-            }
-            
-            // Show window first
-            g_mainWindow->show();
-            
-            // Now clean up any previous files just before starting new recording
-            for (const auto& f : QStringList{OUTPUT_FILE_PATH, TRANSCRIPTION_OUTPUT_PATH}) {
-                QFile file(f);
-                if (file.exists() && file.remove()) {
-                    qInfo() << "[DEBUG] Removed previous file:" << f;
-                }
-            }
-            
-            // Start a new recording immediately - audio system is already initialized
-            if (g_audioRecorder) {
-                g_audioRecorder->startRecording();
-                // Set status to busy
-                setFileStatus(STATUS_BUSY);
-            }
-            
-            return;
+    if (sig == SIGUSR1 && g_mainWindow && !g_mainWindow->isVisible()) {
+        // Ensure any existing recording is stopped
+        if (g_audioRecorder && g_audioRecorder->isRecording()) {
+            g_audioRecorder->stopRecording();
         }
+
+        // Show window first
+        g_mainWindow->show();
+
+        // Now clean up any previous files just before starting new recording
+        for (const auto& f : QStringList{OUTPUT_FILE_PATH, TRANSCRIPTION_OUTPUT_PATH}) {
+            QFile file(f);
+            if (file.exists() && file.remove()) {
+                qInfo() << "[DEBUG] Removed previous file:" << f;
+            }
+        }
+
+        // Start a new recording immediately - audio system is already initialized
+        if (g_audioRecorder) {
+            g_audioRecorder->startRecording();
+            // Set status to busy
+            setFileStatus(STATUS_BUSY);
+        }
+
+        return;
     }
     
     // Handle termination signals
@@ -144,10 +142,6 @@ int main(int argc, char *argv[])
                                      "milliseconds");
     parser.addOption(timeoutOption);
     
-    QCommandLineOption startVisibleOption(QStringList() << "s" << "start-visible",
-                                         "Start with the window visible and begin recording immediately.");
-    parser.addOption(startVisibleOption);
-
     parser.process(app);
 
     int timeoutMs = DEFAULT_TIMEOUT;
@@ -201,30 +195,12 @@ int main(int argc, char *argv[])
     // Create main window (UI) and pass a pointer to the recorder
     MainWindow window(&recorder);
     g_mainWindow = &window;  // For signalHandler access
-    
-    // Determine if we should start visible or hidden
-    bool startVisible = parser.isSet(startVisibleOption);
-    
-    if (startVisible) {
-        // Start with window visible and begin recording
-        window.show();
-        recorder.startRecording();
-        
-        // If timeout was specified, stop recording after the given period
-        if (timeoutMs > 0) {
-            QTimer::singleShot(timeoutMs, [&](){
-                qInfo() << "[INFO] Timeout reached:" << timeoutMs << "ms";
-                recorder.stopRecording();
-                // Don't quit - let the transcription process complete
-            });
-        }
-    } else {
-        // Start with window hidden - make sure audio stream is paused
-        recorder.pauseAudioStream();
-        qInfo() << "[INFO] Starting in background mode with microphone paused."
-                << "To show window and begin recording:\n```\nkill -SIGUSR1"
-                << QCoreApplication::applicationPid() << "\n```";
-    }
+
+    // Start with window hidden - make sure audio stream is paused
+    recorder.pauseAudioStream();
+    qInfo() << "[INFO] Starting in background mode with microphone paused."
+            << "To show window and begin recording:\n```\nkill -SIGUSR1"
+            << QCoreApplication::applicationPid() << "\n```";
 
     // Install signal handlers for SIGINT, SIGTERM, and SIGUSR1
     std::signal(SIGINT, signalHandler);
