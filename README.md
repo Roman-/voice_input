@@ -1,4 +1,3 @@
-```md
 # Roman's voice input
 
 Qt-based voice input app with MP3 encoding (LAME), PortAudio input, and automatic transcription using OpenAI's Whisper API.
@@ -55,5 +54,3 @@ Additionally, the the transcription will be saved to the output file.
 | `/tmp/voice_input_transcription.txt`| Transcription result           |
 | `/tmp/voice_input_status.txt`       | Current status indicator       |
 | `/tmp/voice_input_lock.pid`         | Lock file for singleton check  |
-
-```
