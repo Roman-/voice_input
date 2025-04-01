@@ -32,27 +32,6 @@ void notifyI3Blocks() {
     QProcess::execute("pkill", {"-RTMIN+2", "i3blocks"}); // pkill -RTMIN+2 i3blocks
 }
 
-QString getCurrentKeyboardLayout() {
-    QProcess process;
-    process.start("/bin/sh", {"-c", "setxkbmap -print | awk -F\"+\" '/xkb_symbols/ {print $2}'"});
-    process.waitForFinished();
-
-    QString output = process.readAllStandardOutput().trimmed();
-    return output;
-}
-
-QString getLanguageBasedOnKeyboardLayout() {
-    auto layout = getCurrentKeyboardLayout();
-    // Roman: I'm using heavily customized keyboard with odd layout names. Normal people will just return layout here
-    if (layout == "ml") {
-        return "en";
-    }
-    if (layout == "iq") {
-        return "ru";
-    }
-    return layout;
-}
-
 void copyTranscriptionToClipboard(bool andPressCtrlV) {
     QString command = QString("tr -d '\\n' < %1 | xclip -i -sel c").arg(TRANSCRIPTION_OUTPUT_PATH);
     if (andPressCtrlV) {
@@ -68,10 +47,3 @@ void copyTranscriptionToClipboard(bool andPressCtrlV) {
     }
 }
 
-QColor getLanguageColor(const QString& languageCode) {
-    if (languageCode.toLower() == "en") {
-        return QColor("#5CAAFF"); // Blue
-    } else {
-        return QColor("#FF6B6B"); // default to Red
-    }
-}

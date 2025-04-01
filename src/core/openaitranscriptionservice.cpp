@@ -95,13 +95,7 @@ void OpenAiTranscriptionService::transcribeAudio(const QString& audioFilePath, c
     modelPart.setBody("whisper-1");
     multiPart->append(modelPart);
     
-    // Add language parameter
-    QHttpPart languagePart;
-    languagePart.setHeader(QNetworkRequest::ContentDispositionHeader, 
-                          QVariant("form-data; name=\"language\""));
-    languagePart.setBody(language.toUtf8());
-    multiPart->append(languagePart);
-    
+
     // Add temperature parameter
     QHttpPart temperaturePart;
     temperaturePart.setHeader(QNetworkRequest::ContentDispositionHeader, 

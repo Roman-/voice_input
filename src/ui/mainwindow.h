@@ -54,7 +54,6 @@ private:
     void createVolumeBar();
     void updateVolumeBar(float volume);
     void setupTranscriptionUI();
-    void updateLanguageDisplay();
     void resetUIForNextRecording(); // Resets UI only without removing files
 
 private:
@@ -70,8 +69,6 @@ private:
     QTimer         m_autoCloseTimer;
     int            m_autoCloseSeconds;
     int            m_exitCode;  // Exit code to use when application terminates
-    QVector<QString> m_languages{"en", "ru"};
-    int m_languageIndex;
     bool           m_isClosingPermanently;
     bool m_pressCtrlVAfterCopy{true};
 };
