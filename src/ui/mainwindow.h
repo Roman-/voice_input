@@ -8,7 +8,7 @@
 #include <QPushButton>
 
 class AudioRecorder;
-class TranscriptionService;
+class OpenAiTranscriptionService;
 
 class MainWindow : public QMainWindow
 {
@@ -58,7 +58,7 @@ private:
 
 private:
     AudioRecorder* m_recorder;
-    TranscriptionService* m_transcriptionService;
+    OpenAiTranscriptionService* m_transcriptionService;
     QLabel*        m_statusLabel;
     QLabel*        m_transcriptionLabel;
     QTimer         m_updateTimer;

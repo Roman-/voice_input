@@ -10,7 +10,7 @@
 #include "config/config.h"
 
 OpenAiTranscriptionService::OpenAiTranscriptionService(QObject* parent)
-    : TranscriptionService(parent),
+    : QObject(parent),
       m_networkManager(new QNetworkAccessManager(this)),
       m_currentReply(nullptr),
       m_isTranscribing(false)

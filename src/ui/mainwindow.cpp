@@ -12,7 +12,6 @@
 #include <QShowEvent>
 
 #include "core/audiorecorder.h"
-#include "core/transcriptionservice.h"
 #include "core/openaitranscriptionservice.h"
 #include "core/statusutils.h"
 #include "config/config.h"
@@ -90,11 +89,11 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     
     // Connect transcription signals
     connect(m_transcribeButton, &QPushButton::clicked, this, &MainWindow::onTranscribeButtonClicked);
-    connect(m_transcriptionService, &TranscriptionService::transcriptionCompleted, 
+    connect(m_transcriptionService, &OpenAiTranscriptionService::transcriptionCompleted, 
             this, &MainWindow::onTranscriptionCompleted);
-    connect(m_transcriptionService, &TranscriptionService::transcriptionFailed, 
+    connect(m_transcriptionService, &OpenAiTranscriptionService::transcriptionFailed, 
             this, &MainWindow::onTranscriptionFailed);
-    connect(m_transcriptionService, &TranscriptionService::transcriptionProgress, 
+    connect(m_transcriptionService, &OpenAiTranscriptionService::transcriptionProgress, 
             this, &MainWindow::onTranscriptionProgress);
 
     // Periodically update UI for elapsed time and file size

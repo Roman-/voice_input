@@ -1,14 +1,14 @@
 #ifndef OPENAITRANSCRIPTIONSERVICE_H
 #define OPENAITRANSCRIPTIONSERVICE_H
 
-#include "transcriptionservice.h"
+#include <QObject>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QFile>
 
-class OpenAiTranscriptionService : public TranscriptionService
+class OpenAiTranscriptionService : public QObject
 {
     Q_OBJECT
 public:
@@ -16,22 +16,32 @@ public:
     ~OpenAiTranscriptionService() override;
 
     // Start transcription of the given audio file
-    void transcribeAudio(const QString& audioFilePath, const QString& language) override;
+    void transcribeAudio(const QString& audioFilePath, const QString& language);
     
     // Cancel ongoing transcription
-    void cancelTranscription() override;
+    void cancelTranscription();
     
     // Check if transcription is in progress
-    bool isTranscribing() const override;
+    bool isTranscribing() const;
     
     // Get last error message
-    QString lastError() const override;
+    QString lastError() const;
     
     // Check if the API key is available
-    bool hasApiKey() const override;
+    bool hasApiKey() const;
     
     // Refresh API key from environment (used when retrying)
-    void refreshApiKey() override;
+    void refreshApiKey();
+
+signals:
+    // Emitted when transcription completes successfully
+    void transcriptionCompleted(const QString& transcribedText);
+    
+    // Emitted when transcription fails
+    void transcriptionFailed(const QString& errorMessage);
+    
+    // Progress information
+    void transcriptionProgress(const QString& status);
 
 private slots:
     void handleNetworkReply(QNetworkReply* reply);

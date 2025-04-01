@@ -5,10 +5,7 @@
 #include <QDebug>
 #include <iostream>
 
-#include "core/transcriptionservice.h"
-#include "core/transcriptionfactory.h"
 #include "core/openaitranscriptionservice.h"
-#include "core/mocktranscriptionservice.h"
 #include "config/config.h"
 
 class TestTranscription : public QObject
@@ -20,26 +17,21 @@ private slots:
     void cleanupTestCase();
     void testApiKeyDetection();
     void testTranscription();
-    void testMockTranscription();
 
 private:
-    TranscriptionService* transcriptionService;
+    OpenAiTranscriptionService* transcriptionService;
     bool apiKeyAvailable;
-    bool isUsingMock;
     QString testAudioPath;
 };
 
 void TestTranscription::initTestCase()
 {
-    // Create transcription service using the factory
-    transcriptionService = TranscriptionFactory::createTranscriptionService(this);
-    
-    // Check if we're using the mock or real service
-    isUsingMock = qobject_cast<MockTranscriptionService*>(transcriptionService) != nullptr;
+    // Create OpenAI transcription service
+    transcriptionService = new OpenAiTranscriptionService(this);
     
     // Check if API key is available in environment
     apiKeyAvailable = transcriptionService->hasApiKey();
-    if (!apiKeyAvailable && !isUsingMock) {
+    if (!apiKeyAvailable) {
         qWarning() << "OPENAI_API_KEY environment variable not set or invalid. Some tests will be skipped.";
     }
     
@@ -82,14 +74,7 @@ void TestTranscription::cleanupTestCase()
 
 void TestTranscription::testApiKeyDetection()
 {
-    // If we're using the mock service, it should always have an API key
-    if (isUsingMock) {
-        QVERIFY(transcriptionService->hasApiKey());
-        qInfo() << "Mock service always has an API key";
-        return;
-    }
-    
-    // For the real service, test that it correctly detects if API key is available
+    // Test that it correctly detects if API key is available
     bool hasKey = transcriptionService->hasApiKey();
     QCOMPARE(hasKey, apiKeyAvailable);
     
@@ -102,13 +87,8 @@ void TestTranscription::testApiKeyDetection()
 
 void TestTranscription::testTranscription()
 {
-    // Skip this test if using mock service or if API key is not available
-    if (isUsingMock) {
-        QSKIP("Skipping real transcription test - using mock service");
-    }
-    
     if (!apiKeyAvailable) {
-        QSKIP("Skipping real transcription test - no API key available");
+        QSKIP("Skipping transcription test - no API key available");
     }
     
     // Check if test audio file was found
@@ -117,16 +97,16 @@ void TestTranscription::testTranscription()
     }
     
     // Create signal spy for completion and failure signals
-    QSignalSpy completedSpy(transcriptionService, &TranscriptionService::transcriptionCompleted);
-    QSignalSpy failedSpy(transcriptionService, &TranscriptionService::transcriptionFailed);
-    QSignalSpy progressSpy(transcriptionService, &TranscriptionService::transcriptionProgress);
+    QSignalSpy completedSpy(transcriptionService, &OpenAiTranscriptionService::transcriptionCompleted);
+    QSignalSpy failedSpy(transcriptionService, &OpenAiTranscriptionService::transcriptionFailed);
+    QSignalSpy progressSpy(transcriptionService, &OpenAiTranscriptionService::transcriptionProgress);
     
     // Start transcription
-    qInfo() << "Starting transcription of test file using REAL OpenAI API:" << testAudioPath;
+    qInfo() << "Starting transcription of test file using OpenAI API:" << testAudioPath;
     qInfo() << "This may take a minute or two to complete...";
     transcriptionService->transcribeAudio(testAudioPath, "en"); // Default to English for tests
     
-    // Wait for completion or failure (timeout after 120 seconds for real API call)
+    // Wait for completion or failure (timeout after 120 seconds for API call)
     const int maxWaitMs = 120000;  // 2 minutes
     const int checkIntervalMs = 1000;  // 1 second
     int elapsedMs = 0;
@@ -179,80 +159,6 @@ void TestTranscription::testTranscription()
     
     QVERIFY2(fileContent.contains("hello"), "Transcription file does not contain 'hello'");
     QVERIFY2(fileContent.contains("world"), "Transcription file does not contain 'world'");
-}
-
-void TestTranscription::testMockTranscription()
-{
-    // Only run this test if we're using the mock service
-    if (!isUsingMock) {
-        QSKIP("Skipping mock transcription test - not using mock service");
-    }
-    
-    // Check if test audio file was found
-    if (testAudioPath.isEmpty()) {
-        QFAIL("Test audio file not found. Make sure hello_world.mp3 exists in the project root directory.");
-    }
-    
-    // Create signal spy for completion and failure signals
-    QSignalSpy completedSpy(transcriptionService, &TranscriptionService::transcriptionCompleted);
-    QSignalSpy failedSpy(transcriptionService, &TranscriptionService::transcriptionFailed);
-    QSignalSpy progressSpy(transcriptionService, &TranscriptionService::transcriptionProgress);
-    
-    // Start transcription
-    qInfo() << "Starting transcription of test file using MOCK service:" << testAudioPath;
-    transcriptionService->transcribeAudio(testAudioPath, "en"); // Default to English for tests
-    
-    // Wait for completion or failure (maximum 10 seconds for mock service)
-    const int maxWaitMs = 10000;  // 10 seconds
-    const int checkIntervalMs = 100;  // 100 milliseconds
-    int elapsedMs = 0;
-    
-    while (elapsedMs < maxWaitMs) {
-        if (completedSpy.count() > 0 || failedSpy.count() > 0) {
-            break;
-        }
-        QTest::qWait(checkIntervalMs);
-        elapsedMs += checkIntervalMs;
-        
-        // Log progress if available
-        if (progressSpy.count() > 0) {
-            auto lastProgress = progressSpy.takeLast();
-            qInfo() << "Progress:" << lastProgress[0].toString();
-        }
-    }
-    
-    // Check if the mock API call failed
-    if (failedSpy.count() > 0) {
-        // Get the error message from the signal
-        const QList<QVariant>& errorArgs = failedSpy.takeFirst();
-        QString errorMessage = errorArgs.at(0).toString();
-        
-        // Fail the test with a detailed error message
-        QFAIL(QString("Mock API call failed: %1").arg(errorMessage).toUtf8().constData());
-    }
-    
-    // Check if transcription completed successfully
-    QVERIFY2(completedSpy.count() > 0, "Mock transcription did not complete within timeout");
-    
-    // Get the transcribed text from the signal
-    const QList<QVariant>& arguments = completedSpy.takeFirst();
-    QString transcribedText = arguments.at(0).toString();
-    
-    qInfo() << "Mock transcribed text:" << transcribedText;
-    
-    // Check if the mock transcription contains the expected text
-    QCOMPARE(transcribedText, QString("Hello, world."));
-    
-    // Check if transcription file was created
-    QFile outputFile(TRANSCRIPTION_OUTPUT_PATH);
-    QVERIFY2(outputFile.exists(), "Mock transcription output file was not created");
-    
-    // Verify the contents of the transcription file
-    outputFile.open(QIODevice::ReadOnly | QIODevice::Text);
-    QString fileContent = outputFile.readAll();
-    outputFile.close();
-    
-    QCOMPARE(fileContent, QString("Hello, world."));
 }
 
 QTEST_MAIN(TestTranscription)
