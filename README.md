@@ -1,6 +1,6 @@
 # Roman's voice input
 
-Qt-based voice input app with MP3 encoding (LAME), PortAudio input, and automatic transcription using OpenAI's Whisper API.
+Qt-based voice input app with MP3 encoding (LAME), PortAudio input, and automatic transcription using Groq's Whisper API.
 
 ## ⚙️ Build Instructions
 
@@ -21,10 +21,10 @@ make
 
 ## 🧠 Environment Requirements
 
-Set your OpenAI API key (required for transcription):
+Set your Groq API key (required for transcription):
 
 ```bash
-export OPENAI_API_KEY=your_key_here
+export GROQ_API_KEY=your_key_here
 ```
 
 ## 🚀 Usage

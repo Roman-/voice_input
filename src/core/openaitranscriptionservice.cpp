@@ -17,7 +17,7 @@ OpenAiTranscriptionService::OpenAiTranscriptionService(QObject* parent)
 {
     // Retrieve API key from environment variable
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-    m_apiKey = env.value("OPENAI_API_KEY");
+    m_apiKey = env.value("GROQ_API_KEY");
     
     // Connect network signals
     connect(m_networkManager, &QNetworkAccessManager::finished, 
@@ -38,7 +38,7 @@ void OpenAiTranscriptionService::transcribeAudio(const QString& audioFilePath, c
     
     // Check for API key
     if (!hasApiKey()) {
-        m_lastError = "OpenAI API key not found in environment variable OPENAI_API_KEY";
+        m_lastError = "API key not found in environment variable GROQ_API_KEY";
         emit transcriptionFailed(m_lastError);
         return;
     }
@@ -92,7 +92,7 @@ void OpenAiTranscriptionService::transcribeAudio(const QString& audioFilePath, c
     QHttpPart modelPart;
     modelPart.setHeader(QNetworkRequest::ContentDispositionHeader, 
                         QVariant("form-data; name=\"model\""));
-    modelPart.setBody("whisper-1");
+    modelPart.setBody("whisper-large-v3-turbo");
     multiPart->append(modelPart);
     
 
@@ -104,7 +104,7 @@ void OpenAiTranscriptionService::transcribeAudio(const QString& audioFilePath, c
     multiPart->append(temperaturePart);
     
     // Setup the request
-    QUrl url("https://api.openai.com/v1/audio/transcriptions");
+    QUrl url("https://api.groq.com/openai/v1/audio/transcriptions");
     QNetworkRequest request(url);
     request.setRawHeader("Authorization", QString("Bearer %1").arg(m_apiKey).toUtf8());
     
@@ -165,7 +165,7 @@ void OpenAiTranscriptionService::refreshApiKey()
 {
     // Retrieve API key from environment variable
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-    QString newApiKey = env.value("OPENAI_API_KEY");
+    QString newApiKey = env.value("GROQ_API_KEY");
     
     if (newApiKey != m_apiKey) {
         qInfo() << "API key updated from environment";
