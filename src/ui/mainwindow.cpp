@@ -105,7 +105,7 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     m_hasApiKey = m_transcriptionService->hasApiKey();
     if (!m_hasApiKey) {
         m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_ERROR);
-        m_transcriptionLabel->setText("NO API KEY - Set GROQ_API_KEY environment variable");
+        m_transcriptionLabel->setText(QString("NO API KEY - Set %1 environment variable").arg(API_KEY_ENV_VARIABLE));
     }
     
     // Set up auto-close timer for transcription errors
@@ -578,7 +578,7 @@ void MainWindow::onTranscribeButtonClicked()
     
     // Check environment again for API key (might have been updated)
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-    if (env.contains("GROQ_API_KEY") && !env.value("GROQ_API_KEY").isEmpty()) {
+    if (env.contains(API_KEY_ENV_VARIABLE) && !env.value(API_KEY_ENV_VARIABLE).isEmpty()) {
         // Refresh the transcription service with the latest API key
         m_transcriptionService->refreshApiKey();
     }
@@ -632,7 +632,7 @@ void MainWindow::onTranscriptionFailed(const QString& errorMessage)
     
     // Check environment again for API key (might have been updated)
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-    if (!env.value("GROQ_API_KEY").isEmpty()) {
+    if (!env.value(API_KEY_ENV_VARIABLE).isEmpty()) {
         // Make the "Try Again" button visible
         m_transcribeButton->setVisible(true);
         m_transcribeButton->setEnabled(true);
@@ -674,7 +674,7 @@ void MainWindow::onTranscriptionFailed(const QString& errorMessage)
             }
             
             // Update message with remaining time
-            if (!env.value("GROQ_API_KEY").isEmpty()) {
+            if (!env.value(API_KEY_ENV_VARIABLE).isEmpty()) {
                 m_statusLabel->setText(QString("Click 'Try Again' or wait %1s for auto-close").arg(remainingSeconds));
             } else {
                 m_statusLabel->setText(QString("No API key found - Auto-closing in %1s").arg(remainingSeconds));

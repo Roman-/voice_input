@@ -32,13 +32,13 @@ export GROQ_API_KEY=your_key_here
 Run the application:
 
 ```bash
-./audio_recorder
+./romans_voice_input
 ```
 
 To start recording in the background and trigger via signal:
 
 ```bash
-kill -SIGUSR1 $(pidof audio_recorder)
+kill -SIGUSR1 $(pidof romans_voice_input)
 ```
 
 To stop recording and transcribe, press `Enter` or `Space` in the window.

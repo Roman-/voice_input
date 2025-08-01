@@ -5,6 +5,19 @@ constexpr auto OUTPUT_FILE_PATH = "/tmp/voice_input_recording.mp3";
 constexpr auto TRANSCRIPTION_OUTPUT_PATH = "/tmp/voice_input_transcription.txt";
 constexpr auto LOCK_FILE_PATH = "/tmp/voice_input_lock.pid";
 constexpr auto STATUS_FILE_PATH = "/tmp/voice_input_status.txt";
+
+// API key environment variable name. Use OPENAI_API_KEY or GROQ_API_KEY
+constexpr auto API_KEY_ENV_VARIABLE = "GROQ_API_KEY";
+
+// Endpoint for audio transcription.
+// https://api.groq.com/openai/v1/audio/transcriptions for Groq,
+// https://api.openai.com/v1/audio/transcriptions for OpenAI
+constexpr auto API_URL = "https://api.groq.com/openai/v1/audio/transcriptions";
+
+// Model name for the transcription service.
+// `whisper-large-v3-turbo` for groq (use Developer plan for fastest outputs),
+// `whisper-1` OpenAI whisper
+constexpr auto API_MODEL = "whisper-large-v3-turbo";
 constexpr int DEFAULT_TIMEOUT = 0;           // No timeout by default
 constexpr int SAMPLE_RATE = 44100;           // CD-quality sample rate
 constexpr int NUM_CHANNELS = 1;              // Mono

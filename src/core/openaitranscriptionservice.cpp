@@ -17,7 +17,7 @@ OpenAiTranscriptionService::OpenAiTranscriptionService(QObject* parent)
 {
     // Retrieve API key from environment variable
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-    m_apiKey = env.value("GROQ_API_KEY");
+    m_apiKey = env.value(API_KEY_ENV_VARIABLE);
     
     // Connect network signals
     connect(m_networkManager, &QNetworkAccessManager::finished, 
@@ -38,7 +38,7 @@ void OpenAiTranscriptionService::transcribeAudio(const QString& audioFilePath, c
     
     // Check for API key
     if (!hasApiKey()) {
-        m_lastError = "API key not found in environment variable GROQ_API_KEY";
+        m_lastError = QString("API key not found in environment variable %1").arg(API_KEY_ENV_VARIABLE);
         emit transcriptionFailed(m_lastError);
         return;
     }
@@ -90,9 +90,9 @@ void OpenAiTranscriptionService::transcribeAudio(const QString& audioFilePath, c
     
     // Add model parameter
     QHttpPart modelPart;
-    modelPart.setHeader(QNetworkRequest::ContentDispositionHeader, 
+    modelPart.setHeader(QNetworkRequest::ContentDispositionHeader,
                         QVariant("form-data; name=\"model\""));
-    modelPart.setBody("whisper-large-v3-turbo");
+    modelPart.setBody(API_MODEL);
     multiPart->append(modelPart);
     
 
@@ -104,7 +104,7 @@ void OpenAiTranscriptionService::transcribeAudio(const QString& audioFilePath, c
     multiPart->append(temperaturePart);
     
     // Setup the request
-    QUrl url("https://api.groq.com/openai/v1/audio/transcriptions");
+    QUrl url(API_URL);
     QNetworkRequest request(url);
     request.setRawHeader("Authorization", QString("Bearer %1").arg(m_apiKey).toUtf8());
     
@@ -165,7 +165,7 @@ void OpenAiTranscriptionService::refreshApiKey()
 {
     // Retrieve API key from environment variable
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-    QString newApiKey = env.value("GROQ_API_KEY");
+    QString newApiKey = env.value(API_KEY_ENV_VARIABLE);
     
     if (newApiKey != m_apiKey) {
         qInfo() << "API key updated from environment";
@@ -245,7 +245,7 @@ void OpenAiTranscriptionService::handleNetworkReply(QNetworkReply* reply)
     
     // Extract transcription text
     if (jsonObj.contains("text")) {
-        QString transcribedText = jsonObj["text"].toString();
+        QString transcribedText = jsonObj["text"].toString().trimmed();
         qInfo() << "Transcription completed successfully";
         
         // Save transcription to file
