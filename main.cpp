@@ -27,8 +27,10 @@ static void signalHandler(int sig)
             g_audioRecorder->stopRecording();
         }
 
-        // Show window first
+        // Show window and bring it to front (required on macOS)
         g_mainWindow->show();
+        g_mainWindow->raise();
+        g_mainWindow->activateWindow();
 
         // Now clean up any previous files just before starting new recording
         for (const auto& f : QStringList{OUTPUT_FILE_PATH, TRANSCRIPTION_OUTPUT_PATH}) {
