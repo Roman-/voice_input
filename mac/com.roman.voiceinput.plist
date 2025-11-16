@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.roman.voiceinput</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Applications/Roman Voice Input.app/Contents/MacOS/romans_voice_input</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Interactive</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>GROQ_API_KEY</key>
+    <string>YOUR_KEY_HERE</string>
+    <key>RECORDER_AUTO_CLOSE_ON_ERROR_AFTER</key>
+    <string>0</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/tmp/roman_voiceinput.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/roman_voiceinput.err</string>
+</dict>
+</plist>
+

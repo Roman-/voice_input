@@ -2,29 +2,86 @@
 #include <QDebug>
 #include <QFileInfo>
 #include <QDateTime>
+#include <QThread>
+#include <cmath>
+#include <cstring>
+#include <array>
 
 #include "config/config.h"
+
+// WAV header structure
+#pragma pack(push, 1)
+struct WavHeader {
+    char riff[4] = {'R','I','F','F'};
+    uint32_t fileSizeMinus8;
+    char wave[4] = {'W','A','V','E'};
+    char fmt[4]  = {'f','m','t',' '};
+    uint32_t fmtSize = 16;
+    uint16_t audioFormat = 1; // PCM
+    uint16_t numChannels = 1;
+    uint32_t sampleRate;
+    uint32_t byteRate;
+    uint16_t blockAlign;
+    uint16_t bitsPerSample = 16;
+    char data[4] = {'d','a','t','a'};
+    uint32_t dataSize;
+};
+#pragma pack(pop)
 
 AudioRecorder::AudioRecorder(QObject* parent)
     : QObject(parent),
       m_stream(nullptr),
       m_isRecording(false),
+      m_workerShouldStop(false),
       m_audioDeviceInitialized(false),
       m_currentVolume(0.0f),
-      m_lameGlobal(nullptr),
+      m_sampleRate(SAMPLE_RATE),
+      m_pcmBytesWritten(0),
+      m_ringBuffer(nullptr),
+      m_volumePollTimer(nullptr)
+#ifdef LAME_INCLUDE_DIR
+      , m_lameGlobal(nullptr),
       m_mp3Initialized(false)
+#endif
 {
-    // Initialize data buffer for MP3 processing
+#ifdef LAME_INCLUDE_DIR
+    // Initialize data buffer for MP3 processing (optional, for compatibility)
     m_encodedData.reserve(1024 * 1024); // Pre-allocate 1MB
     m_dataBuffer.setBuffer(&m_encodedData);
     m_dataBuffer.open(QIODevice::ReadWrite);
+#endif
+    
+    // Create volume polling timer (can't emit signals from callback thread)
+    m_volumePollTimer = new QTimer(this);
+    m_volumePollTimer->setInterval(50); // Poll every 50ms
+    connect(m_volumePollTimer, &QTimer::timeout, this, [this]() {
+        if (m_isRecording.load()) {
+            float vol = m_currentVolume.load(std::memory_order_relaxed);
+            emit volumeChanged(vol);
+        }
+    });
 }
 
 AudioRecorder::~AudioRecorder()
 {
     stopRecording();
+    
+    // Wait for worker thread to finish
+    if (m_workerFuture.isRunning()) {
+        m_workerShouldStop = true;
+        m_workerFuture.waitForFinished();
+    }
+    
+    // Free ring buffer
+    if (m_ringBuffer) {
+        delete m_ringBuffer;
+        m_ringBuffer = nullptr;
+    }
+    
     finalizePortAudio();
+#ifdef LAME_INCLUDE_DIR
     finalizeMP3Encoder();
+#endif
 }
 
 bool AudioRecorder::initializeAudioSystem()
@@ -100,7 +157,7 @@ bool AudioRecorder::startRecording()
         return false;
     }
 
-    // Make sure the audio stream is active
+    // Make sure the audio stream is active (on macOS it should always be running for pre-roll)
     if (!isAudioStreamActive()) {
         if (!resumeAudioStream()) {
             qCritical() << "Failed to resume audio stream for recording";
@@ -115,24 +172,28 @@ bool AudioRecorder::startRecording()
         return false;
     }
 
-    // Reset data buffer
-    m_encodedData.clear();
-    m_dataBuffer.seek(0);
+    // Write WAV header and start worker thread
+    m_pcmBytesWritten = 0;
+    writeWavHeader(m_outputFile, static_cast<uint32_t>(m_sampleRate));
     
-    // Initialize MP3 encoder
-    if (!initializeMP3Encoder()) {
-        qCritical() << "Failed to initialize MP3 encoder";
-        m_outputFile.close();
-        return false;
-    }
+    // Start worker thread to read from ring buffer and write to file
+    m_workerShouldStop = false;
+    m_isRecording = true;
+    m_workerFuture = QtConcurrent::run([this]() { this->workerThreadFunction(); });
+    
+    qInfo() << "WAV recording started with worker thread";
 
     // Start the timer
     m_elapsedTimer.start();
-    m_isRecording = true;
     
     // Make sure volume is reset on new recording (emit zero volume to reset bar)
     m_currentVolume = 0.0f;
     emit volumeChanged(m_currentVolume);
+    
+    // Start volume polling timer
+    if (m_volumePollTimer) {
+        m_volumePollTimer->start();
+    }
     
     // Signal that recording has started (UI should reflect this immediately)
     emit recordingStarted();
@@ -143,44 +204,36 @@ bool AudioRecorder::startRecording()
 
 void AudioRecorder::stopRecording()
 {
-    if (!m_isRecording)
+    if (!m_isRecording.load())
         return;
 
     qDebug() << "stopRecording() called";
     
-    // Pause the audio stream first to prevent new data from being processed
-    if (isAudioStreamActive()) {
-        pauseAudioStream();
+    // Stop worker thread and patch WAV header
+    m_isRecording = false;
+    m_workerShouldStop = true;
+    
+    // Wait for worker thread to finish
+    if (m_workerFuture.isRunning()) {
+        m_workerFuture.waitForFinished();
     }
     
-    // Use mutex to ensure no audio processing is happening during finalization
-    QMutexLocker locker(&m_dataMutex);
-    m_isRecording = false;
-
-    // Finalize MP3 encoding
-    if (m_mp3Initialized) {
-        try {
-            // Flush encoder with proper error handling
-            QByteArray finalData = encodeToMP3(nullptr, 0);
-            if (!finalData.isEmpty()) {
-                m_outputFile.write(finalData);
-            }
-            
-            // Clean up encoder
-            finalizeMP3Encoder();
-        } catch (const std::exception& e) {
-            qWarning() << "Exception during MP3 finalization:" << e.what();
-        }
-    }
-
-    // Close output file
+    // Patch WAV header with actual data size
     if (m_outputFile.isOpen()) {
+        patchWavSizes(m_outputFile, m_pcmBytesWritten);
         m_outputFile.close();
     }
+    
+    qInfo() << "WAV recording stopped, wrote" << m_pcmBytesWritten << "bytes";
 
     // Reset volume to zero now that recording has stopped
     m_currentVolume = 0.0f;
     emit volumeChanged(m_currentVolume);
+    
+    // Stop volume polling timer
+    if (m_volumePollTimer) {
+        m_volumePollTimer->stop();
+    }
 
     // Verify file was created and has content
     QFileInfo fileInfo(OUTPUT_FILE_PATH);
@@ -196,7 +249,8 @@ void AudioRecorder::stopRecording()
 
 float AudioRecorder::currentVolumeLevel() const
 {
-    return m_currentVolume;
+    // Volume is stored atomically
+    return m_currentVolume.load(std::memory_order_relaxed);
 }
 
 qint64 AudioRecorder::fileSize() const
@@ -207,110 +261,6 @@ qint64 AudioRecorder::fileSize() const
 qint64 AudioRecorder::elapsedMs() const
 {
     return m_elapsedTimer.elapsed();
-}
-
-bool AudioRecorder::initializeMP3Encoder()
-{
-    qDebug() << "Initializing MP3 encoder";
-
-    // Clean up any existing encoder
-    finalizeMP3Encoder();
-
-    // Create encoder instance
-    m_lameGlobal = lame_init();
-    if (!m_lameGlobal) {
-        qCritical() << "Failed to initialize LAME MP3 encoder";
-        return false;
-    }
-
-    // Set encoder parameters
-    lame_set_num_channels(m_lameGlobal, NUM_CHANNELS);
-    lame_set_in_samplerate(m_lameGlobal, SAMPLE_RATE);
-    lame_set_brate(m_lameGlobal, ENCODER_BITRATE / 1000); // LAME uses kbps
-    lame_set_quality(m_lameGlobal, 2); // 0=best, 9=worst
-    lame_set_mode(m_lameGlobal, NUM_CHANNELS == 1 ? MONO : STEREO);
-    
-    // Initialize the encoder
-    if (lame_init_params(m_lameGlobal) < 0) {
-        qCritical() << "Failed to initialize LAME parameters";
-        lame_close(m_lameGlobal);
-        m_lameGlobal = nullptr;
-        return false;
-    }
-
-    m_mp3Initialized = true;
-    qDebug() << "MP3 encoder initialized successfully";
-    return true;
-}
-
-void AudioRecorder::finalizeMP3Encoder()
-{
-    if (m_lameGlobal) {
-        lame_close(m_lameGlobal);
-        m_lameGlobal = nullptr;
-    }
-    m_mp3Initialized = false;
-}
-
-QByteArray AudioRecorder::encodeToMP3(const short* inputBuffer, int inputSize)
-{
-    if (!m_mp3Initialized || !m_lameGlobal) {
-        return QByteArray();
-    }
-
-    QByteArray result;
-    int numSamples = 0;
-    
-    if (inputBuffer) {
-        // Regular encoding
-        numSamples = inputSize / sizeof(short);
-    } else {
-        // Flush encoder (end of stream)
-        numSamples = 0;
-    }
-
-    // MP3 buffer needs to be 1.25x + 7200 bytes larger than the PCM data
-    int mp3BufferSize = numSamples * 1.25 + 7200;
-    result.resize(mp3BufferSize);
-    
-    int bytesEncoded = 0;
-    
-    if (numSamples > 0) {
-        // Encode audio samples
-        bytesEncoded = lame_encode_buffer(
-            m_lameGlobal,
-            inputBuffer,      // left channel (mono = only channel)
-            nullptr,          // right channel (unused for mono)
-            numSamples,
-            reinterpret_cast<unsigned char*>(result.data()),
-            result.size()
-        );
-    } else {
-        // Flush remaining MP3 data - use safer flush_nogap instead of regular flush
-        bytesEncoded = lame_encode_flush_nogap(
-            m_lameGlobal,
-            reinterpret_cast<unsigned char*>(result.data()),
-            result.size()
-        );
-    }
-    
-    if (bytesEncoded < 0) {
-        qWarning() << "MP3 encoding error:" << bytesEncoded;
-        return QByteArray();
-    } else if (bytesEncoded == 0) {
-        // No bytes to encode, return empty array
-        return QByteArray();
-    }
-    
-    // Safety check before resizing
-    if (bytesEncoded > mp3BufferSize) {
-        qWarning() << "MP3 encoding buffer overflow, limiting output";
-        bytesEncoded = mp3BufferSize;
-    }
-    
-    // Resize to actual encoded size
-    result.resize(bytesEncoded);
-    return result;
 }
 
 bool AudioRecorder::initializePortAudio(bool startStreamImmediately)
@@ -348,38 +298,56 @@ bool AudioRecorder::initializePortAudio(bool startStreamImmediately)
     if (deviceInfo) {
         qInfo() << "Using input device:" << deviceInfo->name 
                 << "with" << deviceInfo->maxInputChannels << "channels";
+        m_sampleRate = deviceInfo->defaultSampleRate;
+    } else {
+        m_sampleRate = SAMPLE_RATE;
     }
 
-    // Open default stream with input channels, no output channels
-    err = Pa_OpenDefaultStream(&m_stream,
-                               NUM_CHANNELS,
-                               0,
-                               paInt16,
-                               SAMPLE_RATE,
-                               256,
-                               &AudioRecorder::audioCallback,
-                               this);
+    // Use Pa_OpenStream with suggestedLatency for low latency
+    PaStreamParameters in;
+    in.device = defaultInputDevice;
+    in.channelCount = NUM_CHANNELS;
+    in.sampleFormat = paInt16;
+    in.suggestedLatency = deviceInfo ? deviceInfo->defaultLowInputLatency : 0.01;
+    in.hostApiSpecificStreamInfo = nullptr;
+
+    err = Pa_OpenStream(&m_stream,
+                        &in,
+                        nullptr,
+                        m_sampleRate,
+                        256, // frames per buffer
+                        paClipOff,
+                        &AudioRecorder::audioCallback,
+                        this);
     if (err != paNoError) {
-        qCritical() << "Pa_OpenDefaultStream() failed:" << Pa_GetErrorText(err);
+        qCritical() << "Pa_OpenStream() failed:" << Pa_GetErrorText(err);
         Pa_Terminate();
         return false;
     }
+    
+    // Initialize ring buffer for real-time safe audio capture
+    // Allocate enough for ~500ms of pre-roll at the sample rate
+    size_t ringBufferFrames = static_cast<size_t>(m_sampleRate * 0.5); // 500ms
+    size_t ringBufferSize = ringBufferFrames * sizeof(int16_t) * NUM_CHANNELS;
+    m_ringBuffer = new LockFreeRingBuffer(ringBufferSize);
+    
+    qInfo() << "Ring buffer initialized:" << ringBufferSize << "bytes for" << ringBufferFrames << "frames";
 
-    // Only start the stream if requested
-    if (startStreamImmediately) {
-        err = Pa_StartStream(m_stream);
-        if (err != paNoError) {
-            qCritical() << "Pa_StartStream() failed:" << Pa_GetErrorText(err);
-            Pa_CloseStream(m_stream);
-            m_stream = nullptr;
-            Pa_Terminate();
-            return false;
+    // Always start the stream (for pre-roll)
+    err = Pa_StartStream(m_stream);
+    if (err != paNoError) {
+        qCritical() << "Pa_StartStream() failed:" << Pa_GetErrorText(err);
+        Pa_CloseStream(m_stream);
+        m_stream = nullptr;
+        if (m_ringBuffer) {
+            delete m_ringBuffer;
+            m_ringBuffer = nullptr;
         }
-        qDebug() << "PortAudio stream opened and started successfully";
-    } else {
-        qDebug() << "PortAudio stream opened successfully but not started (paused)";
+        Pa_Terminate();
+        return false;
     }
     
+    qDebug() << "PortAudio stream opened and started successfully";
     return true;
 }
 
@@ -392,6 +360,12 @@ void AudioRecorder::finalizePortAudio()
         m_stream = nullptr;
     }
     Pa_Terminate();
+    
+    // Free ring buffer
+    if (m_ringBuffer) {
+        delete m_ringBuffer;
+        m_ringBuffer = nullptr;
+    }
 }
 
 int AudioRecorder::audioCallback( const void *inputBuffer,
@@ -408,53 +382,83 @@ int AudioRecorder::audioCallback( const void *inputBuffer,
 
 void AudioRecorder::handleAudioData(const void* inputBuffer, unsigned long frames)
 {
-    QMutexLocker locker(&m_dataMutex);
-    
+    // Real-time safe callback - no mutex, no I/O, no Qt signals
     // Just return if we don't have valid input buffer (no audio data)
     if (!inputBuffer) {
         return;
     }
     
-    // Calculate volume level from audio data
-    const short* buffer = reinterpret_cast<const short*>(inputBuffer);
-    long sum = 0;
-    for (unsigned long i = 0; i < frames; ++i) {
-        sum += qAbs(buffer[i]);
-    }
-    float average = static_cast<float>(sum) / frames;
+    const int16_t* buffer = static_cast<const int16_t*>(inputBuffer);
     
-    // Scale the volume using the config scaling factor
-    float normalizedVolume = average / 32767.0f;  // normalize to ~0..1
-    m_currentVolume = qMin(normalizedVolume * VOLUME_SCALING_FACTOR, 1.0f);  // Apply scaling with 1.0 max
-    
-    // Only emit volume changes if we're recording
-    if (m_isRecording) {
-        emit volumeChanged(m_currentVolume);
-        
-        // Log volume levels periodically for debugging
-        static QElapsedTimer logTimer;
-        if (!logTimer.isValid() || logTimer.elapsed() > 5000) { // Log every 5 seconds
-            qDebug() << "Raw volume:" << normalizedVolume << "Scaled volume:" << m_currentVolume;
-            logTimer.start();
+    // Write to ring buffer (lock-free, real-time safe)
+    if (m_ringBuffer) {
+        size_t written = m_ringBuffer->write(buffer, sizeof(int16_t), frames);
+        if (written < frames) {
+            // Ring buffer overflow - this should be rare with proper sizing
+            // Just continue, we'll lose some samples
         }
     }
     
-    // Only process for recording if we're actually recording and stream is ready
-    if (!m_isRecording || !m_stream) {
-        return;
+    // Calculate volume (cheap operation, atomic store)
+    float rms = 0.0f;
+    for (unsigned long i = 0; i < frames; ++i) {
+        float s = buffer[i] / 32768.0f;
+        rms += s * s;
     }
+    rms = std::sqrt(rms / frames);
+    m_currentVolume.store(qMin(rms * VOLUME_SCALING_FACTOR, 1.0f), std::memory_order_relaxed);
+    
+    // Note: We can't emit signals from the callback thread safely
+    // Volume updates will be polled by the UI thread
+}
 
-    // Encode and write audio data if encoder is ready
-    if (m_mp3Initialized) {
-        try {
-            QByteArray encodedData = encodeToMP3(buffer, frames * sizeof(short));
-            if (!encodedData.isEmpty()) {
-                if (!m_outputFile.write(encodedData)) {
-                    qWarning() << "Failed to write MP3 data to file:" << m_outputFile.errorString();
+void AudioRecorder::writeWavHeader(QFile& file, uint32_t sampleRate, uint32_t totalPcmBytesEstimate)
+{
+    WavHeader h;
+    h.sampleRate = sampleRate;
+    h.byteRate = sampleRate * 2 /* bytes per sample */ * 1 /* ch */;
+    h.blockAlign = 2;
+    h.dataSize = totalPcmBytesEstimate;
+    h.fileSizeMinus8 = 36 + h.dataSize;
+    file.write(reinterpret_cast<const char*>(&h), sizeof(h));
+}
+
+void AudioRecorder::patchWavSizes(QFile& file, uint32_t dataBytes)
+{
+    file.seek(4);
+    uint32_t fileSizeMinus8 = 36 + dataBytes;
+    file.write(reinterpret_cast<const char*>(&fileSizeMinus8), 4);
+    file.seek(40);
+    file.write(reinterpret_cast<const char*>(&dataBytes), 4);
+}
+
+void AudioRecorder::workerThreadFunction()
+{
+    std::array<int16_t, 4096> tmp{};
+    
+    while (!m_workerShouldStop.load() && m_isRecording.load()) {
+        if (!m_ringBuffer) {
+            QThread::msleep(10);
+            continue;
+        }
+        
+        size_t available = m_ringBuffer->getReadAvailable();
+        
+        if (available > 0) {
+            size_t toRead = qMin(available / sizeof(int16_t), tmp.size());
+            size_t got = m_ringBuffer->read(tmp.data(), sizeof(int16_t), toRead);
+            
+            if (got > 0 && m_outputFile.isOpen()) {
+                qint64 bytesWritten = m_outputFile.write(reinterpret_cast<const char*>(tmp.data()), 
+                                                         got * sizeof(int16_t));
+                if (bytesWritten > 0) {
+                    m_pcmBytesWritten += bytesWritten;
+                } else {
+                    qWarning() << "Failed to write PCM data to file:" << m_outputFile.errorString();
                 }
             }
-        } catch (const std::exception& e) {
-            qWarning() << "Exception during MP3 encoding:" << e.what();
+        } else {
+            QThread::msleep(2);
         }
     }
 }

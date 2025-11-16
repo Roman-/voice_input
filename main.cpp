@@ -4,6 +4,7 @@
 #include <QFileInfo>
 #include <QDebug>
 #include <QTimer>
+#include <QProcess>
 #include <csignal>
 
 #include "config/config.h"
@@ -99,9 +100,14 @@ int main(int argc, char *argv[])
             qint64 pid = pidStr.toLongLong(&conversionOk);
             
             if (conversionOk && pid > 0) {
-                // On Linux, check if process is running by checking /proc/{pid} directory
-                QFileInfo procDir(QString("/proc/%1").arg(pid));
-                if (procDir.exists() && procDir.isDir()) {
+                // Check if process is still running
+                // On macOS, use kill -0 to check if process exists
+                QProcess checkProcess;
+                checkProcess.start("kill", {"-0", QString::number(pid)});
+                checkProcess.waitForFinished();
+                bool processRunning = (checkProcess.exitCode() == 0);
+                
+                if (processRunning) {
                     qCritical() << "[ERROR] Another instance is already running with PID:" << pid;
                     qInfo() << "Setting application exit code to:" << APP_EXIT_FAILURE_GENERAL;
                     return APP_EXIT_FAILURE_GENERAL;

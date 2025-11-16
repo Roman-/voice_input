@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>Roman Voice Input</string>
+  <key>CFBundleIdentifier</key><string>com.roman.voiceinput</string>
+  <key>CFBundleVersion</key><string>1.0</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+
+  <!-- Mic permission prompt -->
+  <key>NSMicrophoneUsageDescription</key>
+  <string>This app records short snippets to transcribe your speech.</string>
+
+  <!-- Run as a background agent (no Dock icon) -->
+  <key>LSUIElement</key><true/>
+</dict>
+</plist>
+

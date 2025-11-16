@@ -16,6 +16,26 @@
 #include "core/statusutils.h"
 #include "config/config.h"
 
+#ifdef __APPLE__
+#include <Carbon/Carbon.h>
+
+// Global hotkey handler
+static MainWindow* g_mainWindowForHotkey = nullptr;
+static EventHotKeyRef g_hotKeyRef = nullptr;
+
+OSStatus hotKeyHandler(EventHandlerCallRef nextHandler, EventRef theEvent, void* userData)
+{
+    EventHotKeyID hotKeyID;
+    GetEventParameter(theEvent, kEventParamDirectObject, typeEventHotKeyID, NULL, sizeof(hotKeyID), NULL, &hotKeyID);
+    
+    if (g_mainWindowForHotkey) {
+        QMetaObject::invokeMethod(g_mainWindowForHotkey, "onGlobalHotkeyActivated", Qt::QueuedConnection);
+    }
+    
+    return noErr;
+}
+#endif
+
 MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     : QMainWindow(parent),
       m_recorder(recorder),
@@ -130,6 +150,11 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
         leftoverTranscriptionFile.remove();
         qDebug() << "Removed leftover transcription file:" << TRANSCRIPTION_OUTPUT_PATH;
     }
+    
+    // Setup global hotkey (macOS only)
+#ifdef __APPLE__
+    setupGlobalHotkey();
+#endif
 }
 
 void MainWindow::updateUI()
@@ -713,5 +738,67 @@ void MainWindow::cancelTranscription()
 {
     if (m_transcriptionService && m_transcriptionService->isTranscribing()) {
         m_transcriptionService->cancelTranscription();
+    }
+}
+
+void MainWindow::setupGlobalHotkey()
+{
+#ifdef __APPLE__
+    g_mainWindowForHotkey = this;
+    
+    // Register event handler for hotkey events
+    EventTypeSpec eventType;
+    eventType.eventClass = kEventClassKeyboard;
+    eventType.eventKind = kEventHotKeyPressed;
+    
+    InstallApplicationEventHandler(&hotKeyHandler, 1, &eventType, NULL, NULL);
+    
+    // Register Alt+Space (Option+Space) hotkey
+    EventHotKeyID hotKeyID;
+    hotKeyID.signature = 'vrec'; // Voice recorder
+    hotKeyID.id = 1;
+    
+    // Option (Alt) key = 0x3A, Space = 0x31
+    OSStatus status = RegisterEventHotKey(0x31, // Space key
+                                           optionKey, // Option (Alt) modifier
+                                           hotKeyID,
+                                           GetApplicationEventTarget(),
+                                           0,
+                                           &g_hotKeyRef);
+    
+    if (status == noErr) {
+        qInfo() << "Global hotkey registered: Option+Space";
+    } else {
+        qWarning() << "Failed to register global hotkey. Error:" << status;
+    }
+#endif
+}
+
+void MainWindow::onGlobalHotkeyActivated()
+{
+    qInfo() << "[INFO] Global hotkey activated - starting recording";
+    
+    // Similar to SIGUSR1 handler logic
+    if (m_recorder && m_recorder->isRecording()) {
+        return; // Already recording
+    }
+    
+    // Show window first
+    show();
+    raise();
+    activateWindow();
+    
+    // Clean up any previous files
+    for (const auto& f : QStringList{OUTPUT_FILE_PATH, TRANSCRIPTION_OUTPUT_PATH}) {
+        QFile file(f);
+        if (file.exists() && file.remove()) {
+            qInfo() << "[DEBUG] Removed previous file:" << f;
+        }
+    }
+    
+    // Start recording
+    if (m_recorder) {
+        m_recorder->startRecording();
+        setFileStatus(STATUS_BUSY);
     }
 }

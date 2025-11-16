@@ -3,28 +3,40 @@ project(AudioRecorder)
 
 set(CMAKE_CXX_STANDARD 17)
 
-# Find Qt5 (adjust if you have Qt6)
-find_package(Qt5 COMPONENTS Core Widgets Test Concurrent Network REQUIRED)
-
-# Find PortAudio (using pkg-config)
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(PORTAUDIO REQUIRED portaudio-2.0)
-
-# For LAME MP3 library, we'll use a direct approach
-find_path(LAME_INCLUDE_DIR lame/lame.h)
-find_library(LAME_LIBRARY mp3lame)
-
-if(NOT LAME_INCLUDE_DIR OR NOT LAME_LIBRARY)
-    message(FATAL_ERROR "LAME library not found. Please install libmp3lame-dev.")
+# macOS configuration
+# Try common Homebrew locations for Qt6
+if(EXISTS "/opt/homebrew/opt/qt@6")
+    set(CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH};/opt/homebrew/opt/qt@6")
+elseif(EXISTS "/usr/local/opt/qt@6")
+    set(CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH};/usr/local/opt/qt@6")
 endif()
+
+# Find Qt6
+find_package(Qt6 COMPONENTS Core Gui Widgets Network Concurrent REQUIRED)
+
+# Find PortAudio (Homebrew)
+find_path(PORTAUDIO_INCLUDE_DIR portaudio.h PATHS /opt/homebrew/include /usr/local/include)
+find_library(PORTAUDIO_LIBRARY portaudio PATHS /opt/homebrew/lib /usr/local/lib)
+
+if(NOT PORTAUDIO_INCLUDE_DIR OR NOT PORTAUDIO_LIBRARY)
+    message(FATAL_ERROR "PortAudio library not found. Please install: brew install portaudio")
+endif()
+
+# LAME is optional on macOS (we'll use WAV instead)
+find_path(LAME_INCLUDE_DIR lame/lame.h PATHS /opt/homebrew/include /usr/local/include)
+find_library(LAME_LIBRARY mp3lame PATHS /opt/homebrew/lib /usr/local/lib)
 
 # Include directories
 include_directories(
-    ${PORTAUDIO_INCLUDE_DIRS}
-    ${LAME_INCLUDE_DIR}
+    ${PORTAUDIO_INCLUDE_DIR}
     src
     src/config
 )
+
+# Only add LAME include if found
+if(LAME_INCLUDE_DIR)
+    include_directories(${LAME_INCLUDE_DIR})
+endif()
 
 # Set automatic MOC, UIC, and RCC
 set(CMAKE_AUTOMOC ON)
@@ -43,10 +55,28 @@ set(SOURCES
 add_executable(romans_voice_input ${SOURCES})
 
 target_link_libraries(romans_voice_input
-    Qt5::Core
-    Qt5::Widgets
-    Qt5::Concurrent
-    Qt5::Network
-    ${PORTAUDIO_LIBRARIES}
-    ${LAME_LIBRARY}
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Widgets
+    Qt6::Network
+    Qt6::Concurrent
+    ${PORTAUDIO_LIBRARY}
+)
+
+# Link LAME if found (optional for WAV support)
+if(LAME_LIBRARY)
+    target_link_libraries(romans_voice_input ${LAME_LIBRARY})
+endif()
+
+# macOS bundle configuration
+set_target_properties(romans_voice_input PROPERTIES
+    MACOSX_BUNDLE TRUE
+    MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/mac/Info.plist"
+)
+
+# Link macOS frameworks for clipboard, accessibility, and hotkeys
+target_link_libraries(romans_voice_input
+    "-framework CoreGraphics"
+    "-framework ApplicationServices"
+    "-framework Carbon"
 )

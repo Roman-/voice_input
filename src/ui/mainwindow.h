@@ -39,6 +39,9 @@ private slots:
     void onTranscriptionCompleted(const QString& transcribedText);
     void onTranscriptionFailed(const QString& errorMessage);
     void onTranscriptionProgress(const QString& status);
+    
+    // Global hotkey slot
+    void onGlobalHotkeyActivated();
 
 protected:
     // Override key press event to handle Enter/Escape keys
@@ -55,6 +58,7 @@ private:
     void updateVolumeBar(float volume);
     void setupTranscriptionUI();
     void resetUIForNextRecording(); // Resets UI only without removing files
+    void setupGlobalHotkey(); // Setup global hotkey for recording
 
 private:
     AudioRecorder* m_recorder;

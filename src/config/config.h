@@ -1,7 +1,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-constexpr auto OUTPUT_FILE_PATH = "/tmp/voice_input_recording.mp3";
+constexpr auto OUTPUT_FILE_PATH = "/tmp/voice_input_recording.wav";
 constexpr auto TRANSCRIPTION_OUTPUT_PATH = "/tmp/voice_input_transcription.txt";
 constexpr auto LOCK_FILE_PATH = "/tmp/voice_input_lock.pid";
 constexpr auto STATUS_FILE_PATH = "/tmp/voice_input_status.txt";

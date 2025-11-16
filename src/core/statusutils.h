@@ -3,6 +3,7 @@
 
 #include <QString>
 #include <QColor>
+#include <QThread>
 
 // Status values
 constexpr auto STATUS_READY = "ready";
