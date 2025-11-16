@@ -110,9 +110,22 @@ int main(int argc, char *argv[])
                 bool processRunning = (checkProcess.exitCode() == 0);
                 
                 if (processRunning) {
-                    qCritical() << "[ERROR] Another instance is already running with PID:" << pid;
-                    qInfo() << "Setting application exit code to:" << APP_EXIT_FAILURE_GENERAL;
-                    return APP_EXIT_FAILURE_GENERAL;
+                    // Instance is already running - send SIGUSR1 to activate it
+                    qInfo() << "[INFO] Another instance is already running with PID:" << pid;
+                    qInfo() << "[INFO] Sending SIGUSR1 to activate existing instance...";
+                    
+                    QProcess signalProcess;
+                    signalProcess.start("kill", {"-SIGUSR1", QString::number(pid)});
+                    signalProcess.waitForFinished();
+                    
+                    if (signalProcess.exitCode() == 0) {
+                        qInfo() << "[INFO] Successfully sent activation signal to existing instance";
+                        return 0; // Exit successfully
+                    } else {
+                        qWarning() << "[WARNING] Failed to send signal to PID" << pid 
+                                   << "Error:" << signalProcess.errorString();
+                        // Fall through to start new instance if signal failed
+                    }
                 } else {
                     qInfo() << "[INFO] Found stale lock file. Previous instance (PID:" << pid << ") is no longer running.";
                     lockFile.remove();
