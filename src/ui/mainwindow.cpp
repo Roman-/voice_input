@@ -10,6 +10,11 @@
 #include <QDir>
 #include <QCloseEvent>
 #include <QShowEvent>
+#include <QIcon>
+#include <QPixmap>
+#include <QPainter>
+#include <QAction>
+#include <QScreen>
 
 #include "core/audiorecorder.h"
 #include "core/openaitranscriptionservice.h"
@@ -45,11 +50,16 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
       m_transcribeButton(new QPushButton(this)),
       m_hasApiKey(false),
       m_exitCode(APP_EXIT_FAILURE_GENERAL), // Default to failure exit code until successful transcription
-      m_isClosingPermanently(false)
+      m_isClosingPermanently(false),
+      m_trayIcon(nullptr),
+      m_trayMenu(nullptr)
 {
     // Set window properties
     setWindowTitle("Audio Recorder");
     resize(400, 320);  // Increased size to accommodate transcription UI
+    
+    // Set window flags for tool window behavior
+    setWindowFlags(Qt::Tool | Qt::WindowStaysOnTopHint | Qt::WindowCloseButtonHint);
     
     // Basic UI setup
     auto central = new QWidget(this);
@@ -115,6 +125,16 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
             this, &MainWindow::onTranscriptionFailed);
     connect(m_transcriptionService, &OpenAiTranscriptionService::transcriptionProgress, 
             this, &MainWindow::onTranscriptionProgress);
+    
+    // Connect signals to update tray icon
+    connect(m_recorder, &AudioRecorder::recordingStarted, this, &MainWindow::updateTrayIcon);
+    connect(m_recorder, &AudioRecorder::recordingStopped, this, &MainWindow::updateTrayIcon);
+    connect(m_transcriptionService, &OpenAiTranscriptionService::transcriptionProgress, 
+            this, &MainWindow::updateTrayIcon);
+    connect(m_transcriptionService, &OpenAiTranscriptionService::transcriptionCompleted, 
+            this, &MainWindow::updateTrayIcon);
+    connect(m_transcriptionService, &OpenAiTranscriptionService::transcriptionFailed, 
+            this, &MainWindow::updateTrayIcon);
 
     // Periodically update UI for elapsed time and file size
     m_updateTimer.setInterval(500); // 0.5 seconds
@@ -154,6 +174,7 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     // Setup global hotkey (macOS only)
 #ifdef __APPLE__
     setupGlobalHotkey();
+    setupSystemTrayIcon();
 #endif
 }
 
@@ -495,6 +516,20 @@ void MainWindow::showEvent(QShowEvent* event)
 {
     QMainWindow::showEvent(event);
     
+    // Center window on screen
+    QScreen* screen = QApplication::primaryScreen();
+    if (screen) {
+        QRect screenGeometry = screen->geometry();
+        QRect windowGeometry = geometry();
+        int x = (screenGeometry.width() - windowGeometry.width()) / 2 + screenGeometry.x();
+        int y = (screenGeometry.height() - windowGeometry.height()) / 2 + screenGeometry.y();
+        move(x, y);
+    }
+    
+    // Ensure keyboard focus is captured immediately
+    setFocus();
+    activateWindow();
+    
     // Restore the default UI colors
     QPalette pal = palette();
     pal.setColor(QPalette::Window, QColor(30, 30, 40));        // Dark blue-gray background
@@ -516,6 +551,9 @@ void MainWindow::showEvent(QShowEvent* event)
         m_recorder->resumeAudioStream();
     }
     
+    // Update tray menu
+    updateTrayMenu();
+    
     qInfo() << "[INFO] Window is now shown, UI reset";
 }
 
@@ -536,6 +574,9 @@ void MainWindow::hideAndReset()
     
     // Hide the window - don't change status when window hides
     hide();
+    
+    // Update tray menu
+    updateTrayMenu();
     
     qInfo() << "[INFO] Window hidden, microphone paused, ready for next signal";
 }
@@ -801,4 +842,147 @@ void MainWindow::onGlobalHotkeyActivated()
         m_recorder->startRecording();
         setFileStatus(STATUS_BUSY);
     }
+}
+
+void MainWindow::setupSystemTrayIcon()
+{
+    // Check if system tray is available
+    if (!QSystemTrayIcon::isSystemTrayAvailable()) {
+        qWarning() << "System tray is not available on this system";
+        return;
+    }
+    
+    // Create system tray icon
+    m_trayIcon = new QSystemTrayIcon(this);
+    
+    // Create context menu
+    m_trayMenu = new QMenu(this);
+    
+    QAction* showHideAction = new QAction(isVisible() ? "Hide Window" : "Show Window", this);
+    connect(showHideAction, &QAction::triggered, this, [this]() {
+        if (isVisible()) {
+            hide();
+        } else {
+            show();
+            raise();
+            activateWindow();
+        }
+        updateTrayMenu();
+    });
+    m_trayMenu->addAction(showHideAction);
+    
+    m_trayMenu->addSeparator();
+    
+    QAction* quitAction = new QAction("Quit", this);
+    connect(quitAction, &QAction::triggered, this, [this]() {
+        m_isClosingPermanently = true;
+        QApplication::exit(m_exitCode);
+    });
+    m_trayMenu->addAction(quitAction);
+    
+    m_trayIcon->setContextMenu(m_trayMenu);
+    
+    // Connect icon activation (click) to show/hide window
+    connect(m_trayIcon, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
+        if (reason == QSystemTrayIcon::Trigger) {
+            // Single click - toggle window visibility
+            if (isVisible()) {
+                hide();
+            } else {
+                show();
+                raise();
+                activateWindow();
+            }
+            updateTrayMenu();
+        }
+    });
+    
+    // Set initial icon (idle state)
+    updateTrayIcon();
+    
+    // Show the tray icon
+    m_trayIcon->show();
+    
+    qInfo() << "System tray icon initialized";
+}
+
+void MainWindow::updateTrayMenu()
+{
+    if (!m_trayMenu) return;
+    
+    QList<QAction*> actions = m_trayMenu->actions();
+    if (!actions.isEmpty()) {
+        QAction* showHideAction = actions.first();
+        if (showHideAction) {
+            showHideAction->setText(isVisible() ? "Hide Window" : "Show Window");
+        }
+    }
+}
+
+void MainWindow::updateTrayIcon()
+{
+    if (!m_trayIcon) return;
+    
+    QString color;
+    QString tooltip;
+    
+    // Determine current state
+    bool isRecording = m_recorder && m_recorder->isRecording();
+    bool isTranscribing = m_transcriptionService && m_transcriptionService->isTranscribing();
+    
+    // Check status file for error state
+    QFile statusFile(STATUS_FILE_PATH);
+    bool hasError = false;
+    if (statusFile.exists() && statusFile.open(QIODevice::ReadOnly)) {
+        QString status = QString::fromUtf8(statusFile.readAll()).trimmed();
+        statusFile.close();
+        hasError = (status == STATUS_ERROR);
+    }
+    
+    if (hasError) {
+        color = "#FF6B6B"; // Red for error
+        tooltip = "Voice Input - Error";
+    } else if (isTranscribing) {
+        color = "#FFA500"; // Orange for transcribing
+        tooltip = "Voice Input - Transcribing...";
+    } else if (isRecording) {
+        color = "#FF4444"; // Red for recording
+        tooltip = "Voice Input - Recording...";
+    } else {
+        color = "#888888"; // Gray for idle
+        tooltip = "Voice Input - Ready";
+    }
+    
+    QIcon icon = createTrayIcon(color);
+    m_trayIcon->setIcon(icon);
+    m_trayIcon->setToolTip(tooltip);
+}
+
+QIcon MainWindow::createTrayIcon(const QString& color)
+{
+    // Create a simple circular icon with the specified color
+    // macOS menu bar icons are typically 22x22 points, but we'll create a larger one for retina
+    QPixmap pixmap(44, 44);
+    pixmap.fill(Qt::transparent);
+    
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    
+    // Draw a circle (microphone representation)
+    QColor iconColor(color);
+    painter.setBrush(iconColor);
+    painter.setPen(Qt::NoPen);
+    
+    // Draw a simple microphone shape: circle with a line
+    // Main circle (microphone body)
+    painter.drawEllipse(12, 8, 20, 20);
+    
+    // Microphone stand (vertical line)
+    painter.setPen(QPen(iconColor, 3, Qt::SolidLine, Qt::RoundCap));
+    painter.drawLine(22, 28, 22, 36);
+    
+    // Base (horizontal line)
+    painter.drawLine(16, 36, 28, 36);
+    
+    return QIcon(pixmap);
 }
