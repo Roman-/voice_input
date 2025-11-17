@@ -20,31 +20,41 @@ static void signalHandler(int sig)
 {
     qInfo() << "[INFO] Received signal:" << sig;
 
-    // Handle SIGUSR1 (user signal 1) to show window and start recording
-    if (sig == SIGUSR1 && g_mainWindow && !g_mainWindow->isVisible()) {
-        // Ensure any existing recording is stopped
-        if (g_audioRecorder && g_audioRecorder->isRecording()) {
+    // Handle SIGUSR1 (user signal 1) to show window and start/stop recording
+    if (sig == SIGUSR1 && g_mainWindow) {
+        // If window is visible and recording, stop recording
+        if (g_mainWindow->isVisible() && g_audioRecorder && g_audioRecorder->isRecording()) {
+            qInfo() << "[INFO] SIGUSR1 received - stopping recording";
             g_audioRecorder->stopRecording();
+            return;
         }
-
-        // Show window and bring it to front (required on macOS)
-        g_mainWindow->show();
-        g_mainWindow->raise();
-        g_mainWindow->activateWindow();
-
-        // Now clean up any previous files just before starting new recording
-        for (const auto& f : QStringList{OUTPUT_FILE_PATH, TRANSCRIPTION_OUTPUT_PATH}) {
-            QFile file(f);
-            if (file.exists() && file.remove()) {
-                qInfo() << "[DEBUG] Removed previous file:" << f;
+        
+        // If window is not visible, show it and start recording
+        if (!g_mainWindow->isVisible()) {
+            // Ensure any existing recording is stopped
+            if (g_audioRecorder && g_audioRecorder->isRecording()) {
+                g_audioRecorder->stopRecording();
             }
-        }
 
-        // Start a new recording immediately - audio system is already initialized
-        if (g_audioRecorder) {
-            g_audioRecorder->startRecording();
-            // Set status to busy
-            setFileStatus(STATUS_BUSY);
+            // Show window and bring it to front (required on macOS)
+            g_mainWindow->show();
+            g_mainWindow->raise();
+            g_mainWindow->activateWindow();
+
+            // Now clean up any previous files just before starting new recording
+            for (const auto& f : QStringList{OUTPUT_FILE_PATH, TRANSCRIPTION_OUTPUT_PATH}) {
+                QFile file(f);
+                if (file.exists() && file.remove()) {
+                    qInfo() << "[DEBUG] Removed previous file:" << f;
+                }
+            }
+
+            // Start a new recording immediately - audio system is already initialized
+            if (g_audioRecorder) {
+                g_audioRecorder->startRecording();
+                // Set status to busy
+                setFileStatus(STATUS_BUSY);
+            }
         }
 
         return;

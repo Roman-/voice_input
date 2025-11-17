@@ -54,6 +54,12 @@ protected:
     
     // Override show event to reset UI when window is shown
     void showEvent(QShowEvent* event) override;
+    
+    // Override focus out event to prevent losing focus
+    void focusOutEvent(QFocusEvent* event) override;
+    
+    // Override change event to handle window state changes
+    void changeEvent(QEvent* event) override;
 
 private:
     void createVolumeBar();
@@ -82,6 +88,7 @@ private:
     bool m_pressCtrlVAfterCopy{true};
     QSystemTrayIcon* m_trayIcon; // System tray icon for macOS menu bar
     QMenu*          m_trayMenu;  // Context menu for tray icon
+    QAction*        m_stopRecordingAction; // Action to stop recording from tray menu
 };
 
 #endif // MAINWINDOW_H

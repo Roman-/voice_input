@@ -10,11 +10,13 @@
 #include <QDir>
 #include <QCloseEvent>
 #include <QShowEvent>
+#include <QFocusEvent>
 #include <QIcon>
 #include <QPixmap>
 #include <QPainter>
 #include <QAction>
 #include <QScreen>
+#include <QEvent>
 
 #include "core/audiorecorder.h"
 #include "core/openaitranscriptionservice.h"
@@ -52,14 +54,17 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
       m_exitCode(APP_EXIT_FAILURE_GENERAL), // Default to failure exit code until successful transcription
       m_isClosingPermanently(false),
       m_trayIcon(nullptr),
-      m_trayMenu(nullptr)
+      m_trayMenu(nullptr),
+      m_stopRecordingAction(nullptr)
 {
     // Set window properties
     setWindowTitle("Audio Recorder");
     resize(400, 320);  // Increased size to accommodate transcription UI
     
-    // Set window flags for tool window behavior
+    // Set window flags for tool window behavior - always on top
     setWindowFlags(Qt::Tool | Qt::WindowStaysOnTopHint | Qt::WindowCloseButtonHint);
+    setFocusPolicy(Qt::StrongFocus);
+    setAttribute(Qt::WA_ShowWithoutActivating, false);
     
     // Basic UI setup
     auto central = new QWidget(this);
@@ -554,6 +559,39 @@ void MainWindow::showEvent(QShowEvent* event)
     qInfo() << "[INFO] Window is now shown, UI reset";
 }
 
+void MainWindow::focusOutEvent(QFocusEvent* event)
+{
+    // If recording is active, try to regain focus to prevent losing the window
+    if (m_recorder && m_recorder->isRecording()) {
+        QTimer::singleShot(100, this, [this]() {
+            if (m_recorder && m_recorder->isRecording()) {
+                raise();
+                activateWindow();
+                setFocus();
+            }
+        });
+    }
+    QMainWindow::focusOutEvent(event);
+}
+
+void MainWindow::changeEvent(QEvent* event)
+{
+    // If window is minimized or hidden while recording, bring it back
+    if (event->type() == QEvent::WindowStateChange) {
+        if (m_recorder && m_recorder->isRecording()) {
+            QTimer::singleShot(100, this, [this]() {
+                if (m_recorder && m_recorder->isRecording() && !isVisible()) {
+                    show();
+                    raise();
+                    activateWindow();
+                    setFocus();
+                }
+            });
+        }
+    }
+    QMainWindow::changeEvent(event);
+}
+
 void MainWindow::hideAndReset()
 {
     // Stop any ongoing recording
@@ -811,12 +849,19 @@ void MainWindow::setupGlobalHotkey()
 
 void MainWindow::onGlobalHotkeyActivated()
 {
-    qInfo() << "[INFO] Global hotkey activated - starting recording";
-    
-    // Similar to SIGUSR1 handler logic
-    if (m_recorder && m_recorder->isRecording()) {
-        return; // Already recording
+    // If window is visible and recording, stop recording
+    if (isVisible() && m_recorder && m_recorder->isRecording()) {
+        qInfo() << "[INFO] Global hotkey activated - stopping recording";
+        m_recorder->stopRecording();
+        return;
     }
+    
+    // If already recording (but window not visible), don't start another
+    if (m_recorder && m_recorder->isRecording()) {
+        return;
+    }
+    
+    qInfo() << "[INFO] Global hotkey activated - starting recording";
     
     // Show window first
     show();
@@ -852,6 +897,24 @@ void MainWindow::setupSystemTrayIcon()
     // Create context menu
     m_trayMenu = new QMenu(this);
     
+    QAction* stopRecordingAction = new QAction("Stop Recording", this);
+    stopRecordingAction->setEnabled(false); // Enabled only when recording
+    connect(stopRecordingAction, &QAction::triggered, this, [this]() {
+        if (m_recorder && m_recorder->isRecording()) {
+            // Stop recording and show window if hidden
+            if (!isVisible()) {
+                show();
+                raise();
+                activateWindow();
+                setFocus();
+            }
+            m_recorder->stopRecording();
+        }
+    });
+    m_trayMenu->addAction(stopRecordingAction);
+    
+    m_trayMenu->addSeparator();
+    
     QAction* quitAction = new QAction("Quit", this);
     connect(quitAction, &QAction::triggered, this, [this]() {
         m_isClosingPermanently = true;
@@ -860,6 +923,9 @@ void MainWindow::setupSystemTrayIcon()
     m_trayMenu->addAction(quitAction);
     
     m_trayIcon->setContextMenu(m_trayMenu);
+    
+    // Store reference to stop action for updating
+    m_stopRecordingAction = stopRecordingAction;
     
     // Don't handle tray icon clicks - window is only shown via signal/hotkey
     
@@ -909,6 +975,11 @@ void MainWindow::updateTrayIcon()
     QIcon icon = createTrayIcon(color);
     m_trayIcon->setIcon(icon);
     m_trayIcon->setToolTip(tooltip);
+    
+    // Update stop recording action state
+    if (m_stopRecordingAction) {
+        m_stopRecordingAction->setEnabled(isRecording);
+    }
 }
 
 QIcon MainWindow::createTrayIcon(const QString& color)
