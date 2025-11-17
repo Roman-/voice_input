@@ -55,7 +55,8 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
       m_isClosingPermanently(false),
       m_trayIcon(nullptr),
       m_trayMenu(nullptr),
-      m_stopRecordingAction(nullptr)
+      m_finishRecordingAction(nullptr),
+      m_cancelRecordingAction(nullptr)
 {
     // Set window properties
     setWindowTitle("Audio Recorder");
@@ -897,21 +898,90 @@ void MainWindow::setupSystemTrayIcon()
     // Create context menu
     m_trayMenu = new QMenu(this);
     
-    QAction* stopRecordingAction = new QAction("Stop Recording", this);
-    stopRecordingAction->setEnabled(false); // Enabled only when recording
-    connect(stopRecordingAction, &QAction::triggered, this, [this]() {
+    // Finish Recording action - stops recording and saves (like Enter/Space)
+    QAction* finishRecordingAction = new QAction("Finish Recording", this);
+    finishRecordingAction->setEnabled(false); // Enabled only when recording
+    connect(finishRecordingAction, &QAction::triggered, this, [this]() {
         if (m_recorder && m_recorder->isRecording()) {
-            // Stop recording and show window if hidden
+            // Show window if hidden
             if (!isVisible()) {
                 show();
                 raise();
                 activateWindow();
                 setFocus();
             }
+            // Stop recording - this will trigger transcription
             m_recorder->stopRecording();
         }
     });
-    m_trayMenu->addAction(stopRecordingAction);
+    m_trayMenu->addAction(finishRecordingAction);
+    
+    // Cancel Recording action - cancels recording and removes files (like Escape)
+    QAction* cancelRecordingAction = new QAction("Cancel Recording", this);
+    cancelRecordingAction->setEnabled(false); // Enabled only when recording
+    connect(cancelRecordingAction, &QAction::triggered, this, [this]() {
+        if (m_recorder && m_recorder->isRecording()) {
+            // Show window if hidden
+            if (!isVisible()) {
+                show();
+                raise();
+                activateWindow();
+                setFocus();
+            }
+            
+            // Set exit code for cancellation
+            m_exitCode = APP_EXIT_FAILURE_CANCELED;
+            qInfo() << "Exit code set to" << m_exitCode << "(CANCELED)";
+            
+            // Stop recording
+            m_recorder->stopRecording();
+            
+            // Cancel transcription if in progress
+            if (m_transcriptionService && m_transcriptionService->isTranscribing()) {
+                m_transcriptionService->cancelTranscription();
+            }
+
+            // Remove the audio file
+            QFile audioFile(OUTPUT_FILE_PATH);
+            if (audioFile.exists()) {
+                audioFile.remove();
+                qInfo() << "[INFO] Audio file removed:" << OUTPUT_FILE_PATH;
+            }
+            
+            // Create empty transcription file instead of removing it
+            QFile transcriptionFile(TRANSCRIPTION_OUTPUT_PATH);
+            if (transcriptionFile.exists()) {
+                transcriptionFile.remove();
+            }
+            if (transcriptionFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                transcriptionFile.close();
+                qInfo() << "[INFO] Transcription file emptied:" << TRANSCRIPTION_OUTPUT_PATH;
+            }
+            
+            // Set status to ready
+            setFileStatus(STATUS_READY);
+            
+            // Update UI
+            m_statusLabel->setText("Recording canceled.");
+            m_statusLabel->setStyleSheet(STYLE_STATUS_ERROR);
+            
+            // Reset transcription label
+            m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_NEUTRAL);
+            m_transcriptionLabel->setText("Ready for transcription");
+            m_transcribeButton->setVisible(false);
+            
+            // Pause the audio stream
+            if (m_recorder) {
+                m_recorder->pauseAudioStream();
+            }
+            
+            // Hide the window
+            QTimer::singleShot(200, [this]() {
+                hide();
+            });
+        }
+    });
+    m_trayMenu->addAction(cancelRecordingAction);
     
     m_trayMenu->addSeparator();
     
@@ -924,8 +994,9 @@ void MainWindow::setupSystemTrayIcon()
     
     m_trayIcon->setContextMenu(m_trayMenu);
     
-    // Store reference to stop action for updating
-    m_stopRecordingAction = stopRecordingAction;
+    // Store references to actions for updating
+    m_finishRecordingAction = finishRecordingAction;
+    m_cancelRecordingAction = cancelRecordingAction;
     
     // Don't handle tray icon clicks - window is only shown via signal/hotkey
     
@@ -976,9 +1047,12 @@ void MainWindow::updateTrayIcon()
     m_trayIcon->setIcon(icon);
     m_trayIcon->setToolTip(tooltip);
     
-    // Update stop recording action state
-    if (m_stopRecordingAction) {
-        m_stopRecordingAction->setEnabled(isRecording);
+    // Update finish and cancel recording actions state
+    if (m_finishRecordingAction) {
+        m_finishRecordingAction->setEnabled(isRecording);
+    }
+    if (m_cancelRecordingAction) {
+        m_cancelRecordingAction->setEnabled(isRecording);
     }
 }
 

@@ -88,7 +88,8 @@ private:
     bool m_pressCtrlVAfterCopy{true};
     QSystemTrayIcon* m_trayIcon; // System tray icon for macOS menu bar
     QMenu*          m_trayMenu;  // Context menu for tray icon
-    QAction*        m_stopRecordingAction; // Action to stop recording from tray menu
+    QAction*        m_finishRecordingAction; // Action to finish recording from tray menu
+    QAction*        m_cancelRecordingAction; // Action to cancel recording from tray menu
 };
 
 #endif // MAINWINDOW_H
