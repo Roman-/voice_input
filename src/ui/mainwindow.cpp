@@ -667,7 +667,7 @@ void MainWindow::onTranscriptionCompleted(const QString& transcribedText)
     // Hide window immediately after successful transcription
     hideAndReset();
 
-    copyTranscriptionToClipboard(m_pressCtrlVAfterCopy);
+    copyTranscriptionToClipboard(false); // Don't simulate command-V
 }
 
 void MainWindow::onTranscriptionFailed(const QString& errorMessage)
