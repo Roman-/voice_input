@@ -551,9 +551,6 @@ void MainWindow::showEvent(QShowEvent* event)
         m_recorder->resumeAudioStream();
     }
     
-    // Update tray menu
-    updateTrayMenu();
-    
     qInfo() << "[INFO] Window is now shown, UI reset";
 }
 
@@ -574,9 +571,6 @@ void MainWindow::hideAndReset()
     
     // Hide the window - don't change status when window hides
     hide();
-    
-    // Update tray menu
-    updateTrayMenu();
     
     qInfo() << "[INFO] Window hidden, microphone paused, ready for next signal";
 }
@@ -858,21 +852,6 @@ void MainWindow::setupSystemTrayIcon()
     // Create context menu
     m_trayMenu = new QMenu(this);
     
-    QAction* showHideAction = new QAction(isVisible() ? "Hide Window" : "Show Window", this);
-    connect(showHideAction, &QAction::triggered, this, [this]() {
-        if (isVisible()) {
-            hide();
-        } else {
-            show();
-            raise();
-            activateWindow();
-        }
-        updateTrayMenu();
-    });
-    m_trayMenu->addAction(showHideAction);
-    
-    m_trayMenu->addSeparator();
-    
     QAction* quitAction = new QAction("Quit", this);
     connect(quitAction, &QAction::triggered, this, [this]() {
         m_isClosingPermanently = true;
@@ -882,20 +861,7 @@ void MainWindow::setupSystemTrayIcon()
     
     m_trayIcon->setContextMenu(m_trayMenu);
     
-    // Connect icon activation (click) to show/hide window
-    connect(m_trayIcon, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
-        if (reason == QSystemTrayIcon::Trigger) {
-            // Single click - toggle window visibility
-            if (isVisible()) {
-                hide();
-            } else {
-                show();
-                raise();
-                activateWindow();
-            }
-            updateTrayMenu();
-        }
-    });
+    // Don't handle tray icon clicks - window is only shown via signal/hotkey
     
     // Set initial icon (idle state)
     updateTrayIcon();
@@ -904,19 +870,6 @@ void MainWindow::setupSystemTrayIcon()
     m_trayIcon->show();
     
     qInfo() << "System tray icon initialized";
-}
-
-void MainWindow::updateTrayMenu()
-{
-    if (!m_trayMenu) return;
-    
-    QList<QAction*> actions = m_trayMenu->actions();
-    if (!actions.isEmpty()) {
-        QAction* showHideAction = actions.first();
-        if (showHideAction) {
-            showHideAction->setText(isVisible() ? "Hide Window" : "Show Window");
-        }
-    }
 }
 
 void MainWindow::updateTrayIcon()

@@ -63,7 +63,6 @@ private:
     void setupGlobalHotkey(); // Setup global hotkey for recording
     void setupSystemTrayIcon(); // Setup system tray icon for macOS menu bar
     void updateTrayIcon(); // Update tray icon based on current state
-    void updateTrayMenu(); // Update tray menu text based on window visibility
     QIcon createTrayIcon(const QString& color); // Create programmatic icon with color
 
 private:
