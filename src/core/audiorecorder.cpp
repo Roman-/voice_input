@@ -146,6 +146,8 @@ bool AudioRecorder::startRecording()
 {
     qInfo() << "startRecording() called";
     
+    m_timingTracker.reset();
+    
     // Reset canceled flag
     m_isCanceled = false;
     
@@ -207,6 +209,8 @@ void AudioRecorder::stopRecording()
 
     qDebug() << "stopRecording() called";
     
+    m_timingTracker.start("Recording Pipeline");
+    
     // Stop worker thread and patch WAV header
     m_isRecording = false;
     m_workerShouldStop = true;
@@ -221,6 +225,8 @@ void AudioRecorder::stopRecording()
         patchWavSizes(m_outputFile, m_pcmBytesWritten);
         m_outputFile.close();
     }
+    
+    m_timingTracker.markStage("WAV Finalization");
     
     qInfo() << "WAV recording stopped, wrote" << m_pcmBytesWritten << "bytes";
 
@@ -243,9 +249,13 @@ void AudioRecorder::stopRecording()
         if (!m_isCanceled.load()) {
             if (m_audioConverter && m_audioConverter->isLameAvailable()) {
                 qInfo() << "Starting WAV to MP3 conversion...";
-                bool conversionSuccess = m_audioConverter->convertWavToMp3(OUTPUT_FILE_PATH_WAV, OUTPUT_FILE_PATH);
+                qint64 conversionTimeMs = 0;
+                bool conversionSuccess = m_audioConverter->convertWavToMp3(OUTPUT_FILE_PATH_WAV, OUTPUT_FILE_PATH, &conversionTimeMs);
                 
                 if (conversionSuccess) {
+                    if (conversionTimeMs > 0) {
+                        m_timingTracker.setStageDuration("MP3 Conversion", conversionTimeMs);
+                    }
                     // Delete temporary WAV file after successful conversion
                     QFile wavFile(OUTPUT_FILE_PATH_WAV);
                     if (wavFile.remove()) {
@@ -258,6 +268,7 @@ void AudioRecorder::stopRecording()
                 }
             } else {
                 qWarning() << "LAME encoder not available, skipping MP3 conversion. WAV file saved at:" << OUTPUT_FILE_PATH_WAV;
+                m_timingTracker.setStageDuration("MP3 Conversion (skipped)", 0);
             }
         } else {
             qInfo() << "Recording was canceled, skipping MP3 conversion";
@@ -267,9 +278,12 @@ void AudioRecorder::stopRecording()
                 qInfo() << "WAV file deleted after cancellation";
             }
         }
+        
     } else {
         qWarning() << "WAV file may be missing or empty:" << OUTPUT_FILE_PATH_WAV;
     }
+
+    m_timingTracker.markStage("File Cleanup");
 
     emit recordingStopped();
 }

@@ -8,6 +8,7 @@
 #include <QPushButton>
 #include <QSystemTrayIcon>
 #include <QMenu>
+#include <QElapsedTimer>
 
 class AudioRecorder;
 class OpenAiTranscriptionService;
@@ -96,6 +97,13 @@ private:
     QAction*        m_finishRecordingAction; // Action to finish recording from tray menu
     QAction*        m_cancelRecordingAction; // Action to cancel recording from tray menu
     bool            m_isUploading; // Track if transcription is in uploading phase vs processing phase
+    QElapsedTimer   m_uploadTimer;
+    bool            m_uploadTimerActive{false};
+    QElapsedTimer   m_processingTimer;
+    bool            m_processingTimerActive{false};
+    QElapsedTimer   m_finalStatusTimer;
+    bool            m_finalStatusTimerActive{false};
+    bool            m_uiStageMarked{false};
 };
 
 #endif // MAINWINDOW_H

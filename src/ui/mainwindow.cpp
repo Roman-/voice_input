@@ -337,6 +337,8 @@ void MainWindow::onRecordingStopped()
         return;
     }
     
+    m_uiStageMarked = false;
+    
     m_statusLabel->setText("Recording Stopped. File saved.");
     m_statusLabel->setStyleSheet(STYLE_STATUS_SUCCESS);
     
@@ -399,6 +401,11 @@ void MainWindow::onRecordingStopped()
 
 void MainWindow::onRecordingStarted()
 {
+    m_uploadTimerActive = false;
+    m_processingTimerActive = false;
+    m_finalStatusTimerActive = false;
+    m_uiStageMarked = false;
+
     // Update UI when recording initialization starts
     m_statusLabel->setText("Initializing audio system...");
     
@@ -677,6 +684,11 @@ void MainWindow::onTranscribeButtonClicked()
 {
     if (!m_transcriptionService) return;
     
+    if (!m_uiStageMarked && m_recorder) {
+        m_recorder->timingTracker().markStage("UI Update");
+        m_uiStageMarked = true;
+    }
+    
     // Cancel any auto-close timer when retry is attempted
     if (m_autoCloseTimer.isActive()) {
         m_autoCloseTimer.stop();
@@ -726,6 +738,16 @@ void MainWindow::onTranscriptionCompleted(const QString& transcribedText)
 
     // Set status to ready
     setFileStatus(STATUS_READY);
+    
+    TimingTracker* tracker = m_recorder ? &m_recorder->timingTracker() : nullptr;
+    if (tracker) {
+        if (m_finalStatusTimerActive) {
+            tracker->setStageDuration("Final Status Update", m_finalStatusTimer.elapsed());
+            m_finalStatusTimerActive = false;
+        }
+        qInfo().noquote() << tracker->summary();
+        tracker->reset();
+    }
 
     // Hide window immediately after successful transcription
     hideAndReset();
@@ -827,10 +849,43 @@ void MainWindow::onTranscriptionProgress(const QString& status)
     m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_NEUTRAL);
     
     // Track if we're in uploading phase (contains "Uploading") vs processing phase
-    m_isUploading = status.contains("Uploading", Qt::CaseInsensitive);
+    bool wasUploading = m_isUploading;
+    bool nowUploading = status.contains("Uploading", Qt::CaseInsensitive);
+    m_isUploading = nowUploading;
     
     // If uploading, add file size information
     QString displayStatus = status;
+    TimingTracker* tracker = m_recorder ? &m_recorder->timingTracker() : nullptr;
+    
+    if (!wasUploading && nowUploading) {
+        m_uploadTimer.restart();
+        m_uploadTimerActive = true;
+    }
+    
+    if (status.contains("Processing audio", Qt::CaseInsensitive)) {
+        if (m_uploadTimerActive && tracker) {
+            tracker->setStageDuration("Transcription Upload", m_uploadTimer.elapsed());
+        }
+        m_uploadTimerActive = false;
+        
+        if (!m_processingTimerActive) {
+            m_processingTimer.restart();
+            m_processingTimerActive = true;
+        }
+    }
+    
+    if (status.contains("Response received", Qt::CaseInsensitive)) {
+        if (m_processingTimerActive && tracker) {
+            tracker->setStageDuration("Transcription Processing", m_processingTimer.elapsed());
+        }
+        m_processingTimerActive = false;
+        
+        if (!m_finalStatusTimerActive) {
+            m_finalStatusTimer.restart();
+            m_finalStatusTimerActive = true;
+        }
+    }
+    
     if (m_isUploading) {
         // Get the actual output file path (MP3 if available, WAV otherwise)
         QString outputFilePath = m_recorder ? m_recorder->getOutputFilePath() : OUTPUT_FILE_PATH;

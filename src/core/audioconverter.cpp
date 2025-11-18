@@ -36,13 +36,16 @@ bool AudioConverter::isLameAvailable() const
 #endif
 }
 
-bool AudioConverter::convertWavToMp3(const QString& wavFilePath, const QString& mp3FilePath)
+bool AudioConverter::convertWavToMp3(const QString& wavFilePath, const QString& mp3FilePath, qint64* conversionTimeMs)
 {
     emit conversionStarted();
 
 #ifdef LAME_INCLUDE_DIR
     QElapsedTimer timer;
     timer.start();
+    if (conversionTimeMs) {
+        *conversionTimeMs = 0;
+    }
 
     // Check if WAV file exists
     QFileInfo wavFileInfo(wavFilePath);
@@ -200,16 +203,20 @@ bool AudioConverter::convertWavToMp3(const QString& wavFilePath, const QString& 
     finalizeLame();
 
     // Calculate conversion metrics
-    qint64 conversionTimeMs = timer.elapsed();
+    qint64 conversionTimeMsLocal = timer.elapsed();
     double compressionRatio = static_cast<double>(wavSizeBytes) / totalMp3Written;
 
     qInfo() << "WAV to MP3 conversion completed:";
     qInfo() << "  Output file:" << mp3FilePath;
     qInfo() << "  Output size:" << formatFileSize(totalMp3Written);
-    qInfo() << "  Conversion time:" << conversionTimeMs << "ms (" << (conversionTimeMs / 1000.0) << "seconds)";
+    qInfo() << "  Conversion time:" << conversionTimeMsLocal << "ms (" << (conversionTimeMsLocal / 1000.0) << "seconds)";
     qInfo() << "  Compression ratio:" << QString::number(compressionRatio, 'f', 2) << ":1";
     qInfo() << "  Audio duration:" << wavInfo.durationSeconds << "seconds";
     qInfo() << "  Input size:" << formatFileSize(wavSizeBytes) << ", Output size:" << formatFileSize(totalMp3Written);
+    
+    if (conversionTimeMs) {
+        *conversionTimeMs = conversionTimeMsLocal;
+    }
 
     emit conversionCompleted(mp3FilePath);
     return true;

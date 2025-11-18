@@ -22,7 +22,7 @@ public:
 
     // Convert WAV file to MP3
     // Returns true on success, false on failure
-    bool convertWavToMp3(const QString& wavFilePath, const QString& mp3FilePath);
+    bool convertWavToMp3(const QString& wavFilePath, const QString& mp3FilePath, qint64* conversionTimeMs = nullptr);
 
     // Check if LAME encoder is available
     bool isLameAvailable() const;

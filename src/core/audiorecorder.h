@@ -14,6 +14,8 @@
 #include <cstring>
 #include <portaudio.h>
 
+#include "timingtracker.h"
+
 class AudioConverter;
 
 // Simple lock-free ring buffer for macOS
@@ -115,6 +117,9 @@ public:
     // Check if recording was canceled
     bool isCanceled() const { return m_isCanceled.load(); }
     
+    // Access timing tracker
+    TimingTracker& timingTracker() { return m_timingTracker; }
+    
     // Check if audio system is initialized
     bool isAudioSystemInitialized() const { return m_audioDeviceInitialized; }
     
@@ -178,6 +183,7 @@ private:
     
     // Audio converter for WAV to MP3 conversion
     AudioConverter* m_audioConverter;
+    TimingTracker   m_timingTracker;
 };
 
 #endif // AUDIORECORDER_H
