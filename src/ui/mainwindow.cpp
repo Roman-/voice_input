@@ -17,6 +17,7 @@
 #include <QAction>
 #include <QScreen>
 #include <QEvent>
+#include <QTimer>
 
 #include "core/audiorecorder.h"
 #include "core/openaitranscriptionservice.h"
@@ -749,7 +750,12 @@ void MainWindow::onTranscriptionCompleted(const QString& transcribedText)
     // Hide window immediately after successful transcription
     hideAndReset();
 
-    copyTranscriptionToClipboard(false); // Don't simulate command-V
+    // Wait for the window to fully hide so focus returns to the previous app,
+    // then copy and auto-paste the transcription.
+    constexpr int kPasteDelayMs = 50;
+    QTimer::singleShot(kPasteDelayMs, this, [this]() {
+        copyTranscriptionToClipboard(true);
+    });
 }
 
 void MainWindow::onTranscriptionFailed(const QString& errorMessage)
