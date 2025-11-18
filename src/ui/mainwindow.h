@@ -42,6 +42,11 @@ private slots:
     void onTranscriptionFailed(const QString& errorMessage);
     void onTranscriptionProgress(const QString& status);
     
+    // Conversion slots
+    void onConversionStarted();
+    void onConversionCompleted(const QString& mp3Path);
+    void onConversionFailed(const QString& errorMessage);
+    
     // Global hotkey slot
     void onGlobalHotkeyActivated();
 

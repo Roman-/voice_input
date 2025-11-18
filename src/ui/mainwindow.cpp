@@ -124,6 +124,11 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     connect(m_recorder, &AudioRecorder::recordingStarted, this, &MainWindow::onRecordingStarted);
     connect(m_recorder, &AudioRecorder::audioDeviceReady, this, &MainWindow::onAudioDeviceReady);
     
+    // Connect conversion signals
+    connect(m_recorder, &AudioRecorder::conversionStarted, this, &MainWindow::onConversionStarted);
+    connect(m_recorder, &AudioRecorder::conversionCompleted, this, &MainWindow::onConversionCompleted);
+    connect(m_recorder, &AudioRecorder::conversionFailed, this, &MainWindow::onConversionFailed);
+    
     // Connect transcription signals
     connect(m_transcribeButton, &QPushButton::clicked, this, &MainWindow::onTranscribeButtonClicked);
     connect(m_transcriptionService, &OpenAiTranscriptionService::transcriptionCompleted, 
@@ -343,7 +348,9 @@ void MainWindow::onRecordingStopped()
     updateVolumeBar(0.0f);
     
     // Check for valid recording and API key
-    QFile recordingFile(OUTPUT_FILE_PATH);
+    // Use the actual output file path (MP3 if available, WAV otherwise)
+    QString outputFilePath = m_recorder ? m_recorder->getOutputFilePath() : OUTPUT_FILE_PATH;
+    QFile recordingFile(outputFilePath);
     if (recordingFile.exists() && m_hasApiKey) {
         // Auto-start transcription
         m_transcriptionLabel->setText("Automatically starting transcription...");
@@ -663,8 +670,11 @@ void MainWindow::onTranscribeButtonClicked()
         qInfo() << "Auto-close timer canceled due to retry attempt";
     }
     
+    // Get the actual output file path (MP3 if available, WAV otherwise)
+    QString outputFilePath = m_recorder ? m_recorder->getOutputFilePath() : OUTPUT_FILE_PATH;
+    
     // Check if the recording file exists
-    QFile recordingFile(OUTPUT_FILE_PATH);
+    QFile recordingFile(outputFilePath);
     if (!recordingFile.exists()) {
         m_transcriptionLabel->setText("Error: Recording file not found");
         m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_ERROR);
@@ -686,7 +696,7 @@ void MainWindow::onTranscribeButtonClicked()
         m_transcriptionService->refreshApiKey();
     }
 
-    m_transcriptionService->transcribeAudio(OUTPUT_FILE_PATH, "en");
+    m_transcriptionService->transcribeAudio(outputFilePath, "en");
 }
 
 void MainWindow::onTranscriptionCompleted(const QString& transcribedText)
@@ -802,10 +812,39 @@ void MainWindow::onTranscriptionProgress(const QString& status)
 {
     // Update UI with progress status
     m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_NEUTRAL);
-    m_transcriptionLabel->setText(status);
     
     // Track if we're in uploading phase (contains "Uploading") vs processing phase
     m_isUploading = status.contains("Uploading", Qt::CaseInsensitive);
+    
+    // If uploading, add file size information
+    QString displayStatus = status;
+    if (m_isUploading) {
+        // Get the actual output file path (MP3 if available, WAV otherwise)
+        QString outputFilePath = m_recorder ? m_recorder->getOutputFilePath() : OUTPUT_FILE_PATH;
+        QFileInfo fileInfo(outputFilePath);
+        if (fileInfo.exists()) {
+            qint64 fileSizeBytes = fileInfo.size();
+            double fileSizeKB = fileSizeBytes / 1024.0;
+            double fileSizeMB = fileSizeKB / 1024.0;
+            
+            QString sizeStr;
+            if (fileSizeMB >= 1.0) {
+                sizeStr = QString::number(fileSizeMB, 'f', 2) + " MB";
+            } else {
+                sizeStr = QString::number(fileSizeKB, 'f', 2) + " KB";
+            }
+            
+            // Extract percentage if present, otherwise just show status with size
+            if (status.contains("%")) {
+                // Status already contains percentage, add size at the beginning
+                displayStatus = QString("Uploading audio (%1): %2").arg(sizeStr, status);
+            } else {
+                displayStatus = QString("Uploading audio (%1)...").arg(sizeStr);
+            }
+        }
+    }
+    
+    m_transcriptionLabel->setText(displayStatus);
     
     // Hide the retry button during transcription
     m_transcribeButton->setVisible(false);
@@ -822,6 +861,45 @@ void MainWindow::onTranscriptionProgress(const QString& status)
     
     // Update tray icon to reflect current phase
     updateTrayIcon();
+}
+
+void MainWindow::onConversionStarted()
+{
+    // Update status label to show conversion in progress
+    m_statusLabel->setText("Converting to MP3...");
+    m_statusLabel->setStyleSheet(STYLE_STATUS_NEUTRAL);
+    
+    // Update transcription label to show conversion status
+    m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_NEUTRAL);
+    m_transcriptionLabel->setText("Converting WAV to MP3...");
+    
+    qInfo() << "Conversion started - UI updated";
+}
+
+void MainWindow::onConversionCompleted(const QString& mp3Path)
+{
+    // Update status label
+    m_statusLabel->setText("Conversion completed");
+    m_statusLabel->setStyleSheet(STYLE_STATUS_SUCCESS);
+    
+    // Update transcription label
+    m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_NEUTRAL);
+    m_transcriptionLabel->setText("MP3 file ready for transcription");
+    
+    qInfo() << "Conversion completed - MP3 file ready:" << mp3Path;
+}
+
+void MainWindow::onConversionFailed(const QString& errorMessage)
+{
+    // Update status label to show error
+    m_statusLabel->setText("Conversion failed");
+    m_statusLabel->setStyleSheet(STYLE_STATUS_ERROR);
+    
+    // Update transcription label with error message
+    m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_ERROR);
+    m_transcriptionLabel->setText(QString("Conversion failed: %1").arg(errorMessage));
+    
+    qWarning() << "Conversion failed:" << errorMessage;
 }
 
 void MainWindow::cancelTranscription()

@@ -1,7 +1,8 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-constexpr auto OUTPUT_FILE_PATH = "/tmp/voice_input_recording.wav";
+constexpr auto OUTPUT_FILE_PATH = "/tmp/voice_input_recording.mp3";
+constexpr auto OUTPUT_FILE_PATH_WAV = "/tmp/voice_input_recording.wav";
 constexpr auto TRANSCRIPTION_OUTPUT_PATH = "/tmp/voice_input_transcription.txt";
 constexpr auto LOCK_FILE_PATH = "/tmp/voice_input_lock.pid";
 constexpr auto STATUS_FILE_PATH = "/tmp/voice_input_status.txt";
@@ -21,7 +22,8 @@ constexpr auto API_MODEL = "whisper-large-v3-turbo";
 constexpr int DEFAULT_TIMEOUT = 0;           // No timeout by default
 constexpr int SAMPLE_RATE = 44100;           // CD-quality sample rate
 constexpr int NUM_CHANNELS = 1;              // Mono
-constexpr int ENCODER_BITRATE = 128000;      // 128 kbps MP3 encoding
+constexpr int MP3_BITRATE = 128;            // MP3 bitrate in kbps (configurable: 64, 96, 128, 192, 256, 320)
+constexpr int ENCODER_BITRATE = 128000;      // 128 kbps MP3 encoding (deprecated, use MP3_BITRATE)
 
 // Volume Visualization Settings
 constexpr float VOLUME_SCALING_FACTOR = 5.0f;  // Amplify volume for better visualization

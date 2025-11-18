@@ -36,6 +36,10 @@ include_directories(
 # Only add LAME include if found
 if(LAME_INCLUDE_DIR)
     include_directories(${LAME_INCLUDE_DIR})
+    add_definitions(-DLAME_INCLUDE_DIR)
+    message(STATUS "LAME found: ${LAME_INCLUDE_DIR}, ${LAME_LIBRARY}")
+else()
+    message(WARNING "LAME not found - MP3 conversion will be disabled")
 endif()
 
 # Set automatic MOC, UIC, and RCC
@@ -47,6 +51,7 @@ set(CMAKE_AUTORCC ON)
 set(SOURCES
     main.cpp
     src/core/audiorecorder.cpp
+    src/core/audioconverter.cpp
     src/core/openaitranscriptionservice.cpp
     src/core/statusutils.cpp
     src/ui/mainwindow.cpp

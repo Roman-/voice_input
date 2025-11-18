@@ -1,4 +1,5 @@
 #include "audiorecorder.h"
+#include "audioconverter.h"
 #include <QDebug>
 #include <QFileInfo>
 #include <QDateTime>
@@ -38,18 +39,13 @@ AudioRecorder::AudioRecorder(QObject* parent)
       m_sampleRate(SAMPLE_RATE),
       m_pcmBytesWritten(0),
       m_ringBuffer(nullptr),
-      m_volumePollTimer(nullptr)
-#ifdef LAME_INCLUDE_DIR
-      , m_lameGlobal(nullptr),
-      m_mp3Initialized(false)
-#endif
+      m_volumePollTimer(nullptr),
+      m_audioConverter(new AudioConverter(this))
 {
-#ifdef LAME_INCLUDE_DIR
-    // Initialize data buffer for MP3 processing (optional, for compatibility)
-    m_encodedData.reserve(1024 * 1024); // Pre-allocate 1MB
-    m_dataBuffer.setBuffer(&m_encodedData);
-    m_dataBuffer.open(QIODevice::ReadWrite);
-#endif
+    // Connect AudioConverter signals to AudioRecorder signals
+    connect(m_audioConverter, &AudioConverter::conversionStarted, this, &AudioRecorder::conversionStarted);
+    connect(m_audioConverter, &AudioConverter::conversionCompleted, this, &AudioRecorder::conversionCompleted);
+    connect(m_audioConverter, &AudioConverter::conversionFailed, this, &AudioRecorder::conversionFailed);
     
     // Create volume polling timer (can't emit signals from callback thread)
     m_volumePollTimer = new QTimer(this);
@@ -79,9 +75,6 @@ AudioRecorder::~AudioRecorder()
     }
     
     finalizePortAudio();
-#ifdef LAME_INCLUDE_DIR
-    finalizeMP3Encoder();
-#endif
 }
 
 bool AudioRecorder::initializeAudioSystem()
@@ -165,10 +158,10 @@ bool AudioRecorder::startRecording()
         }
     }
 
-    // Prepare output file immediately
-    m_outputFile.setFileName(OUTPUT_FILE_PATH);
+    // Prepare output file immediately (use WAV path for recording)
+    m_outputFile.setFileName(OUTPUT_FILE_PATH_WAV);
     if (!m_outputFile.open(QIODevice::WriteOnly)) {
-        qCritical() << "Unable to open output file for writing:" << OUTPUT_FILE_PATH;
+        qCritical() << "Unable to open output file for writing:" << OUTPUT_FILE_PATH_WAV;
         return false;
     }
 
@@ -197,7 +190,7 @@ bool AudioRecorder::startRecording()
     
     // Signal that recording has started (UI should reflect this immediately)
     emit recordingStarted();
-    qInfo() << "Recording started, writing to:" << OUTPUT_FILE_PATH;
+    qInfo() << "Recording started, writing to:" << OUTPUT_FILE_PATH_WAV;
     
     return true;
 }
@@ -235,13 +228,41 @@ void AudioRecorder::stopRecording()
         m_volumePollTimer->stop();
     }
 
-    // Verify file was created and has content
-    QFileInfo fileInfo(OUTPUT_FILE_PATH);
-    if (fileInfo.exists() && fileInfo.size() > 0) {
-        qInfo() << "Recording stopped, file saved successfully to:" << OUTPUT_FILE_PATH 
-                << "Size:" << fileInfo.size() << "bytes";
+    // Verify WAV file was created and has content
+    QFileInfo wavFileInfo(OUTPUT_FILE_PATH_WAV);
+    if (wavFileInfo.exists() && wavFileInfo.size() > 0) {
+        qInfo() << "Recording stopped, WAV file saved successfully to:" << OUTPUT_FILE_PATH_WAV 
+                << "Size:" << wavFileInfo.size() << "bytes";
+        
+        // Convert WAV to MP3
+        qDebug() << "Checking LAME availability...";
+        qDebug() << "AudioConverter exists:" << (m_audioConverter != nullptr);
+        if (m_audioConverter) {
+            qDebug() << "Calling isLameAvailable()...";
+            bool lameAvailable = m_audioConverter->isLameAvailable();
+            qDebug() << "isLameAvailable() returned:" << lameAvailable;
+        }
+        
+        if (m_audioConverter && m_audioConverter->isLameAvailable()) {
+            qInfo() << "Starting WAV to MP3 conversion...";
+            bool conversionSuccess = m_audioConverter->convertWavToMp3(OUTPUT_FILE_PATH_WAV, OUTPUT_FILE_PATH);
+            
+            if (conversionSuccess) {
+                // Delete temporary WAV file after successful conversion
+                QFile wavFile(OUTPUT_FILE_PATH_WAV);
+                if (wavFile.remove()) {
+                    qInfo() << "Temporary WAV file deleted successfully";
+                } else {
+                    qWarning() << "Failed to delete temporary WAV file:" << wavFile.errorString();
+                }
+            } else {
+                qWarning() << "MP3 conversion failed, keeping WAV file";
+            }
+        } else {
+            qWarning() << "LAME encoder not available, skipping MP3 conversion. WAV file saved at:" << OUTPUT_FILE_PATH_WAV;
+        }
     } else {
-        qWarning() << "Output file may be missing or empty:" << OUTPUT_FILE_PATH;
+        qWarning() << "WAV file may be missing or empty:" << OUTPUT_FILE_PATH_WAV;
     }
 
     emit recordingStopped();
@@ -261,6 +282,24 @@ qint64 AudioRecorder::fileSize() const
 qint64 AudioRecorder::elapsedMs() const
 {
     return m_elapsedTimer.elapsed();
+}
+
+QString AudioRecorder::getOutputFilePath() const
+{
+    // Check if MP3 file exists (preferred)
+    QFileInfo mp3FileInfo(OUTPUT_FILE_PATH);
+    if (mp3FileInfo.exists() && mp3FileInfo.size() > 0) {
+        return OUTPUT_FILE_PATH;
+    }
+    
+    // Fall back to WAV file if MP3 doesn't exist (LAME not available or conversion failed)
+    QFileInfo wavFileInfo(OUTPUT_FILE_PATH_WAV);
+    if (wavFileInfo.exists() && wavFileInfo.size() > 0) {
+        return OUTPUT_FILE_PATH_WAV;
+    }
+    
+    // Neither file exists, return MP3 path as default
+    return OUTPUT_FILE_PATH;
 }
 
 bool AudioRecorder::initializePortAudio(bool startStreamImmediately)

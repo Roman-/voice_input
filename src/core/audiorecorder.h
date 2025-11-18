@@ -13,11 +13,8 @@
 #include <atomic>
 #include <cstring>
 #include <portaudio.h>
-// LAME is optional on macOS (we use WAV instead)
-// Only include if LAME_INCLUDE_DIR is defined (set by CMake if found)
-#ifdef LAME_INCLUDE_DIR
-#include <lame/lame.h>
-#endif
+
+class AudioConverter;
 
 // Simple lock-free ring buffer for macOS
 struct LockFreeRingBuffer {
@@ -108,6 +105,9 @@ public:
     qint64 fileSize() const;
     qint64 elapsedMs() const;
     
+    // Get the actual output file path (MP3 if available, WAV otherwise)
+    QString getOutputFilePath() const;
+    
     // Check if recording is active
     bool isRecording() const { return m_isRecording; }
     
@@ -122,6 +122,9 @@ signals:
     void recordingStopped();
     void recordingStarted();
     void audioDeviceReady();
+    void conversionStarted();
+    void conversionCompleted(const QString& mp3Path);
+    void conversionFailed(const QString& errorMessage);
 
 private:
     bool initializePortAudio(bool startStreamImmediately = true);
@@ -168,13 +171,8 @@ private:
     // Volume polling timer (macOS only - can't emit from callback)
     QTimer*         m_volumePollTimer;
     
-    // MP3 encoding (optional)
-#ifdef LAME_INCLUDE_DIR
-    lame_global_flags* m_lameGlobal;
-    bool               m_mp3Initialized;
-    QByteArray         m_encodedData;
-    QBuffer            m_dataBuffer; // For intermediate processing
-#endif
+    // Audio converter for WAV to MP3 conversion
+    AudioConverter* m_audioConverter;
 };
 
 #endif // AUDIORECORDER_H
