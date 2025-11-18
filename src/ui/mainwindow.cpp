@@ -56,7 +56,8 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
       m_trayIcon(nullptr),
       m_trayMenu(nullptr),
       m_finishRecordingAction(nullptr),
-      m_cancelRecordingAction(nullptr)
+      m_cancelRecordingAction(nullptr),
+      m_isUploading(false)
 {
     // Set window properties
     setWindowTitle("Audio Recorder");
@@ -675,6 +676,9 @@ void MainWindow::onTranscribeButtonClicked()
     m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_NEUTRAL);
     m_transcriptionLabel->setText("Starting transcription process...");
     
+    // Reset uploading flag - will be set to true when upload progress starts
+    m_isUploading = false;
+    
     // Check environment again for API key (might have been updated)
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     if (env.contains(API_KEY_ENV_VARIABLE) && !env.value(API_KEY_ENV_VARIABLE).isEmpty()) {
@@ -689,6 +693,9 @@ void MainWindow::onTranscriptionCompleted(const QString& transcribedText)
 {
     // Set exit code to success
     m_exitCode = APP_EXIT_SUCCESS;
+    
+    // Reset uploading flag
+    m_isUploading = false;
     
     // Log the transcription result to console
     qInfo() << "Transcription result:\n-----\n" << transcribedText << "\n-----";
@@ -705,6 +712,9 @@ void MainWindow::onTranscriptionCompleted(const QString& transcribedText)
 
 void MainWindow::onTranscriptionFailed(const QString& errorMessage)
 {
+    // Reset uploading flag
+    m_isUploading = false;
+    
     // Set appropriate exit code based on the error
     if (errorMessage.contains("API key", Qt::CaseInsensitive) || 
         errorMessage.contains("authentication", Qt::CaseInsensitive)) {
@@ -794,6 +804,9 @@ void MainWindow::onTranscriptionProgress(const QString& status)
     m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_NEUTRAL);
     m_transcriptionLabel->setText(status);
     
+    // Track if we're in uploading phase (contains "Uploading") vs processing phase
+    m_isUploading = status.contains("Uploading", Qt::CaseInsensitive);
+    
     // Hide the retry button during transcription
     m_transcribeButton->setVisible(false);
     
@@ -806,12 +819,17 @@ void MainWindow::onTranscriptionProgress(const QString& status)
     
     // Reset volume bar to zero when transcription starts
     updateVolumeBar(0.0f);
+    
+    // Update tray icon to reflect current phase
+    updateTrayIcon();
 }
 
 void MainWindow::cancelTranscription()
 {
     if (m_transcriptionService && m_transcriptionService->isTranscribing()) {
         m_transcriptionService->cancelTranscription();
+        // Reset uploading flag
+        m_isUploading = false;
     }
 }
 
@@ -1020,26 +1038,43 @@ void MainWindow::updateTrayIcon()
     bool isRecording = m_recorder && m_recorder->isRecording();
     bool isTranscribing = m_transcriptionService && m_transcriptionService->isTranscribing();
     
-    // Check status file for error state
+    // Check status file for error state and busy state
     QFile statusFile(STATUS_FILE_PATH);
     bool hasError = false;
+    bool isBusy = false;
     if (statusFile.exists() && statusFile.open(QIODevice::ReadOnly)) {
         QString status = QString::fromUtf8(statusFile.readAll()).trimmed();
         statusFile.close();
         hasError = (status == STATUS_ERROR);
+        isBusy = (status == STATUS_BUSY);
     }
+    
+    // Check if we have a recording file but transcription hasn't started yet
+    // This handles the gap between recording stop and transcription start
+    bool hasRecordingFile = QFile::exists(OUTPUT_FILE_PATH);
+    bool isPostRecordingPreTranscription = hasRecordingFile && !isRecording && !isTranscribing && isBusy;
     
     if (hasError) {
         color = "#FF6B6B"; // Red for error
         tooltip = "Voice Input - Error";
-    } else if (isTranscribing) {
-        color = "#FFA500"; // Orange for transcribing
-        tooltip = "Voice Input - Transcribing...";
     } else if (isRecording) {
         color = "#FF4444"; // Red for recording
         tooltip = "Voice Input - Recording...";
+    } else if (isTranscribing) {
+        if (m_isUploading) {
+            color = "#FFD700"; // Gold/yellow-ish for uploading (different from processing)
+            tooltip = "Voice Input - Uploading...";
+        } else {
+            color = "#FFA500"; // Orange/yellow for processing (waiting for reply)
+            tooltip = "Voice Input - Processing...";
+        }
+    } else if (isPostRecordingPreTranscription) {
+        // Transition state: recording stopped, transcription about to start
+        // Use gold color to indicate we're preparing for upload
+        color = "#FFD700"; // Gold/yellow-ish (same as uploading, since we're about to upload)
+        tooltip = "Voice Input - Preparing...";
     } else {
-        color = "#888888"; // Gray for idle
+        color = "#888888"; // Gray only for truly idle/ready state
         tooltip = "Voice Input - Ready";
     }
     

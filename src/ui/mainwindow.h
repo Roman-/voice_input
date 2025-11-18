@@ -90,6 +90,7 @@ private:
     QMenu*          m_trayMenu;  // Context menu for tray icon
     QAction*        m_finishRecordingAction; // Action to finish recording from tray menu
     QAction*        m_cancelRecordingAction; // Action to cancel recording from tray menu
+    bool            m_isUploading; // Track if transcription is in uploading phase vs processing phase
 };
 
 #endif // MAINWINDOW_H
