@@ -52,6 +52,7 @@ set(SOURCES
     main.cpp
     src/core/audiorecorder.cpp
     src/core/audioconverter.cpp
+    src/core/formatutils.cpp
     src/core/openaitranscriptionservice.cpp
     src/core/statusutils.cpp
     src/ui/mainwindow.cpp

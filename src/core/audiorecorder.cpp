@@ -1,5 +1,6 @@
 #include "audiorecorder.h"
 #include "audioconverter.h"
+#include "formatutils.h"
 #include <QDebug>
 #include <QFileInfo>
 #include <QDateTime>
@@ -34,6 +35,7 @@ AudioRecorder::AudioRecorder(QObject* parent)
       m_stream(nullptr),
       m_isRecording(false),
       m_workerShouldStop(false),
+      m_isCanceled(false),
       m_audioDeviceInitialized(false),
       m_currentVolume(0.0f),
       m_sampleRate(SAMPLE_RATE),
@@ -144,6 +146,9 @@ bool AudioRecorder::startRecording()
 {
     qInfo() << "startRecording() called";
     
+    // Reset canceled flag
+    m_isCanceled = false;
+    
     // Check if audio system is initialized
     if (!m_audioDeviceInitialized) {
         qCritical() << "Cannot start recording - audio system not initialized";
@@ -232,40 +237,48 @@ void AudioRecorder::stopRecording()
     QFileInfo wavFileInfo(OUTPUT_FILE_PATH_WAV);
     if (wavFileInfo.exists() && wavFileInfo.size() > 0) {
         qInfo() << "Recording stopped, WAV file saved successfully to:" << OUTPUT_FILE_PATH_WAV 
-                << "Size:" << wavFileInfo.size() << "bytes";
+                << "Size:" << formatFileSize(wavFileInfo.size());
         
-        // Convert WAV to MP3
-        qDebug() << "Checking LAME availability...";
-        qDebug() << "AudioConverter exists:" << (m_audioConverter != nullptr);
-        if (m_audioConverter) {
-            qDebug() << "Calling isLameAvailable()...";
-            bool lameAvailable = m_audioConverter->isLameAvailable();
-            qDebug() << "isLameAvailable() returned:" << lameAvailable;
-        }
-        
-        if (m_audioConverter && m_audioConverter->isLameAvailable()) {
-            qInfo() << "Starting WAV to MP3 conversion...";
-            bool conversionSuccess = m_audioConverter->convertWavToMp3(OUTPUT_FILE_PATH_WAV, OUTPUT_FILE_PATH);
-            
-            if (conversionSuccess) {
-                // Delete temporary WAV file after successful conversion
-                QFile wavFile(OUTPUT_FILE_PATH_WAV);
-                if (wavFile.remove()) {
-                    qInfo() << "Temporary WAV file deleted successfully";
+        // Convert WAV to MP3 only if recording was not canceled
+        if (!m_isCanceled.load()) {
+            if (m_audioConverter && m_audioConverter->isLameAvailable()) {
+                qInfo() << "Starting WAV to MP3 conversion...";
+                bool conversionSuccess = m_audioConverter->convertWavToMp3(OUTPUT_FILE_PATH_WAV, OUTPUT_FILE_PATH);
+                
+                if (conversionSuccess) {
+                    // Delete temporary WAV file after successful conversion
+                    QFile wavFile(OUTPUT_FILE_PATH_WAV);
+                    if (wavFile.remove()) {
+                        qInfo() << "Temporary WAV file deleted successfully";
+                    } else {
+                        qWarning() << "Failed to delete temporary WAV file:" << wavFile.errorString();
+                    }
                 } else {
-                    qWarning() << "Failed to delete temporary WAV file:" << wavFile.errorString();
+                    qWarning() << "MP3 conversion failed, keeping WAV file";
                 }
             } else {
-                qWarning() << "MP3 conversion failed, keeping WAV file";
+                qWarning() << "LAME encoder not available, skipping MP3 conversion. WAV file saved at:" << OUTPUT_FILE_PATH_WAV;
             }
         } else {
-            qWarning() << "LAME encoder not available, skipping MP3 conversion. WAV file saved at:" << OUTPUT_FILE_PATH_WAV;
+            qInfo() << "Recording was canceled, skipping MP3 conversion";
+            // Delete WAV file when canceled
+            QFile wavFile(OUTPUT_FILE_PATH_WAV);
+            if (wavFile.remove()) {
+                qInfo() << "WAV file deleted after cancellation";
+            }
         }
     } else {
         qWarning() << "WAV file may be missing or empty:" << OUTPUT_FILE_PATH_WAV;
     }
 
     emit recordingStopped();
+}
+
+void AudioRecorder::cancelRecording()
+{
+    // Mark as canceled and stop recording
+    m_isCanceled = true;
+    stopRecording();
 }
 
 float AudioRecorder::currentVolumeLevel() const

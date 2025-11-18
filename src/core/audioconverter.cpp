@@ -1,4 +1,5 @@
 #include "audioconverter.h"
+#include "formatutils.h"
 #include <QFile>
 #include <QFileInfo>
 #include <QDebug>
@@ -29,11 +30,8 @@ AudioConverter::~AudioConverter()
 bool AudioConverter::isLameAvailable() const
 {
 #ifdef LAME_INCLUDE_DIR
-    qDebug() << "LAME_INCLUDE_DIR is defined - LAME should be available";
     return true;
 #else
-    qWarning() << "LAME_INCLUDE_DIR is NOT defined - LAME is not available";
-    qWarning() << "Check CMake configuration and rebuild the project";
     return false;
 #endif
 }
@@ -47,22 +45,19 @@ bool AudioConverter::convertWavToMp3(const QString& wavFilePath, const QString& 
     timer.start();
 
     // Check if WAV file exists
-    QFileInfo wavInfo(wavFilePath);
-    if (!wavInfo.exists()) {
+    QFileInfo wavFileInfo(wavFilePath);
+    if (!wavFileInfo.exists()) {
         QString error = QString("WAV file does not exist: %1").arg(wavFilePath);
         qCritical() << error;
         emit conversionFailed(error);
         return false;
     }
 
-    qint64 wavSizeBytes = wavInfo.size();
-    double wavSizeKB = wavSizeBytes / 1024.0;
-    double wavSizeMB = wavSizeKB / 1024.0;
+    qint64 wavSizeBytes = wavFileInfo.size();
 
     qInfo() << "Starting WAV to MP3 conversion:";
     qInfo() << "  Input file:" << wavFilePath;
-    qInfo() << "  Input size:" << wavSizeBytes << "bytes (" 
-            << (wavSizeMB >= 1.0 ? QString::number(wavSizeMB, 'f', 2) + " MB" : QString::number(wavSizeKB, 'f', 2) + " KB") << ")";
+    qInfo() << "  Input size:" << formatFileSize(wavSizeBytes);
 
     // Open WAV file
     QFile wavFile(wavFilePath);
@@ -73,33 +68,23 @@ bool AudioConverter::convertWavToMp3(const QString& wavFilePath, const QString& 
         return false;
     }
 
-    // Read WAV header
-    QByteArray header = wavFile.read(44); // Standard WAV header is 44 bytes
-    if (header.size() < 44) {
-        QString error = "WAV file header is too small or invalid";
+    // Parse WAV header
+    WavInfo wavInfo;
+    if (!parseWavHeader(wavFile, wavInfo)) {
+        QString error = "Failed to parse WAV header";
         qCritical() << error;
         wavFile.close();
         emit conversionFailed(error);
         return false;
     }
 
-    // Parse WAV header to get sample rate, channels, and data size
-    uint32_t sampleRate = *reinterpret_cast<const uint32_t*>(header.data() + 24);
-    uint16_t numChannels = *reinterpret_cast<const uint16_t*>(header.data() + 22);
-    uint32_t dataSize = *reinterpret_cast<const uint32_t*>(header.data() + 40);
-    
-    // Calculate audio duration
-    uint32_t bytesPerSample = 2; // 16-bit = 2 bytes
-    uint32_t bytesPerSecond = sampleRate * numChannels * bytesPerSample;
-    double durationSeconds = static_cast<double>(dataSize) / bytesPerSecond;
-
-    qInfo() << "  Sample rate:" << sampleRate << "Hz";
-    qInfo() << "  Channels:" << numChannels;
-    qInfo() << "  Audio duration:" << durationSeconds << "seconds";
+    qInfo() << "  Sample rate:" << wavInfo.sampleRate << "Hz";
+    qInfo() << "  Channels:" << wavInfo.numChannels;
+    qInfo() << "  Audio duration:" << wavInfo.durationSeconds << "seconds";
     qInfo() << "  MP3 bitrate:" << MP3_BITRATE << "kbps";
 
     // Initialize LAME encoder
-    if (!initializeLame(static_cast<int>(sampleRate), static_cast<int>(numChannels), MP3_BITRATE)) {
+    if (!initializeLame(static_cast<int>(wavInfo.sampleRate), static_cast<int>(wavInfo.numChannels), MP3_BITRATE)) {
         QString error = "Failed to initialize LAME encoder";
         qCritical() << error;
         wavFile.close();
@@ -144,7 +129,7 @@ bool AudioConverter::convertWavToMp3(const QString& wavFilePath, const QString& 
         // Encode to MP3
         int mp3BytesEncoded = 0;
         
-        if (numChannels == 1) {
+        if (wavInfo.numChannels == 1) {
             // Mono encoding
             mp3BytesEncoded = lame_encode_buffer(
                 m_lameGlobal,
@@ -156,8 +141,6 @@ bool AudioConverter::convertWavToMp3(const QString& wavFilePath, const QString& 
             );
         } else {
             // Stereo encoding (interleaved)
-            int16_t* leftChannel = pcmBuffer;
-            int16_t* rightChannel = pcmBuffer + 1;
             int samplesPerChannel = samplesRead / 2;
             
             mp3BytesEncoded = lame_encode_buffer_interleaved(
@@ -218,18 +201,15 @@ bool AudioConverter::convertWavToMp3(const QString& wavFilePath, const QString& 
 
     // Calculate conversion metrics
     qint64 conversionTimeMs = timer.elapsed();
-    double mp3SizeKB = totalMp3Written / 1024.0;
-    double mp3SizeMB = mp3SizeKB / 1024.0;
     double compressionRatio = static_cast<double>(wavSizeBytes) / totalMp3Written;
 
     qInfo() << "WAV to MP3 conversion completed:";
     qInfo() << "  Output file:" << mp3FilePath;
-    qInfo() << "  Output size:" << totalMp3Written << "bytes (" 
-            << (mp3SizeMB >= 1.0 ? QString::number(mp3SizeMB, 'f', 2) + " MB" : QString::number(mp3SizeKB, 'f', 2) + " KB") << ")";
+    qInfo() << "  Output size:" << formatFileSize(totalMp3Written);
     qInfo() << "  Conversion time:" << conversionTimeMs << "ms (" << (conversionTimeMs / 1000.0) << "seconds)";
     qInfo() << "  Compression ratio:" << QString::number(compressionRatio, 'f', 2) << ":1";
-    qInfo() << "  Audio duration:" << durationSeconds << "seconds";
-    qInfo() << "  Input size:" << wavSizeBytes << "bytes, Output size:" << totalMp3Written << "bytes";
+    qInfo() << "  Audio duration:" << wavInfo.durationSeconds << "seconds";
+    qInfo() << "  Input size:" << formatFileSize(wavSizeBytes) << ", Output size:" << formatFileSize(totalMp3Written);
 
     emit conversionCompleted(mp3FilePath);
     return true;
@@ -243,6 +223,28 @@ bool AudioConverter::convertWavToMp3(const QString& wavFilePath, const QString& 
 }
 
 #ifdef LAME_INCLUDE_DIR
+bool AudioConverter::parseWavHeader(QFile& wavFile, WavInfo& info)
+{
+    // Read WAV header
+    QByteArray header = wavFile.read(44); // Standard WAV header is 44 bytes
+    if (header.size() < 44) {
+        qCritical() << "WAV file header is too small or invalid";
+        return false;
+    }
+
+    // Parse WAV header to get sample rate, channels, and data size
+    info.sampleRate = *reinterpret_cast<const uint32_t*>(header.data() + 24);
+    info.numChannels = *reinterpret_cast<const uint16_t*>(header.data() + 22);
+    info.dataSize = *reinterpret_cast<const uint32_t*>(header.data() + 40);
+    
+    // Calculate audio duration
+    const uint32_t bytesPerSample = 2; // 16-bit = 2 bytes
+    uint32_t bytesPerSecond = info.sampleRate * info.numChannels * bytesPerSample;
+    info.durationSeconds = static_cast<double>(info.dataSize) / bytesPerSecond;
+    
+    return true;
+}
+
 bool AudioConverter::initializeLame(int sampleRate, int numChannels, int bitrate)
 {
     if (m_lameInitialized) {

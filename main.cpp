@@ -18,13 +18,13 @@ static MainWindow* g_mainWindow = nullptr;
 
 static void signalHandler(int sig)
 {
-    qInfo() << "[INFO] Received signal:" << sig;
+    qInfo() << "Received signal:" << sig;
 
     // Handle SIGUSR1 (user signal 1) to show window and start/stop recording
     if (sig == SIGUSR1 && g_mainWindow) {
         // If window is visible and recording, stop recording
         if (g_mainWindow->isVisible() && g_audioRecorder && g_audioRecorder->isRecording()) {
-            qInfo() << "[INFO] SIGUSR1 received - stopping recording";
+            qInfo() << "SIGUSR1 received - stopping recording";
             g_audioRecorder->stopRecording();
             return;
         }
@@ -45,7 +45,7 @@ static void signalHandler(int sig)
             for (const auto& f : QStringList{OUTPUT_FILE_PATH, TRANSCRIPTION_OUTPUT_PATH}) {
                 QFile file(f);
                 if (file.exists() && file.remove()) {
-                    qInfo() << "[DEBUG] Removed previous file:" << f;
+                    qDebug() << "Removed previous file:" << f;
                 }
             }
 
@@ -75,7 +75,7 @@ static void signalHandler(int sig)
         for (const auto& f : QStringList{OUTPUT_FILE_PATH, TRANSCRIPTION_OUTPUT_PATH, STATUS_FILE_PATH, LOCK_FILE_PATH}) {
             QFile file(f);
             if (file.exists() && file.remove()) {
-                qInfo() << "[INFO] Removed file:" << f;
+                qDebug() << "Removed file:" << f;
             }
         }
         
@@ -92,7 +92,7 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
     qSetMessagePattern("[%{time hh:mm:ss.zzz}] [%{type}] %{message}");
 
-    qInfo() << "[INFO] Application started";
+    qInfo() << "Application started";
     
     // Set initial status to "ready"
     if (!setFileStatus(STATUS_READY)) {
@@ -121,15 +121,15 @@ int main(int argc, char *argv[])
                 
                 if (processRunning) {
                     // Instance is already running - send SIGUSR1 to activate it
-                    qInfo() << "[INFO] Another instance is already running with PID:" << pid;
-                    qInfo() << "[INFO] Sending SIGUSR1 to activate existing instance...";
+                    qInfo() << "Another instance is already running with PID:" << pid;
+                    qInfo() << "Sending SIGUSR1 to activate existing instance...";
                     
                     QProcess signalProcess;
                     signalProcess.start("kill", {"-SIGUSR1", QString::number(pid)});
                     signalProcess.waitForFinished();
                     
                     if (signalProcess.exitCode() == 0) {
-                        qInfo() << "[INFO] Successfully sent activation signal to existing instance";
+                        qInfo() << "Successfully sent activation signal to existing instance";
                         return 0; // Exit successfully
                     } else {
                         qWarning() << "[WARNING] Failed to send signal to PID" << pid 
@@ -137,7 +137,7 @@ int main(int argc, char *argv[])
                         // Fall through to start new instance if signal failed
                     }
                 } else {
-                    qInfo() << "[INFO] Found stale lock file. Previous instance (PID:" << pid << ") is no longer running.";
+                    qInfo() << "Found stale lock file. Previous instance (PID:" << pid << ") is no longer running.";
                     lockFile.remove();
                 }
             } else {
@@ -156,7 +156,7 @@ int main(int argc, char *argv[])
         QTextStream stream(&lockFile);
         stream << QCoreApplication::applicationPid();
         lockFile.close();
-        qInfo() << "[INFO] Created lock file with PID:" << QCoreApplication::applicationPid();
+        qInfo() << "Created lock file with PID:" << QCoreApplication::applicationPid();
     } else {
         qCritical() << "[ERROR] Failed to create lock file:" << LOCK_FILE_PATH;
         qInfo() << "Setting application exit code to:" << APP_EXIT_FAILURE_FILE_ERROR;
@@ -196,7 +196,7 @@ int main(int argc, char *argv[])
         for (const auto& f : QStringList{OUTPUT_FILE_PATH, TRANSCRIPTION_OUTPUT_PATH, STATUS_FILE_PATH, LOCK_FILE_PATH}) {
             QFile file(f);
             if (file.exists() && file.remove()) {
-                qInfo() << "[INFO] Removed file:" << f;
+                qDebug() << "Removed file:" << f;
             }
         }
         
@@ -211,17 +211,17 @@ int main(int argc, char *argv[])
     for (const auto& f : QStringList{OUTPUT_FILE_PATH, TRANSCRIPTION_OUTPUT_PATH}) {
         QFile file(f);
         if (file.exists() && file.remove()) {
-            qInfo() << "[DEBUG] Removed leftover file:" << f;
+            qDebug() << "Removed leftover file:" << f;
         }
     }
     
     // Initialize the audio system once at startup
-    qInfo() << "[INFO] Initializing audio system...";
+    qInfo() << "Initializing audio system...";
     if (!recorder.initializeAudioSystem()) {
         qCritical() << "[ERROR] Failed to initialize audio system";
         return APP_EXIT_FAILURE_GENERAL;
     }
-    qInfo() << "[INFO] Audio system initialized successfully";
+    qInfo() << "Audio system initialized successfully";
     
     // Create main window (UI) and pass a pointer to the recorder
     MainWindow window(&recorder);
@@ -229,7 +229,7 @@ int main(int argc, char *argv[])
 
     // Start with window hidden - make sure audio stream is paused
     recorder.pauseAudioStream();
-    qInfo() << "[INFO] Starting in background mode with microphone paused."
+    qInfo() << "Starting in background mode with microphone paused."
             << "To show window and begin recording:\n```\nkill -SIGUSR1"
             << QCoreApplication::applicationPid() << "\n```";
 

@@ -95,6 +95,7 @@ public:
     // Start/stop recording to file
     bool startRecording();
     void stopRecording();
+    void cancelRecording(); // Cancel recording without conversion
     
     // Pause/resume the audio stream (to avoid listening when not needed)
     bool pauseAudioStream();
@@ -110,6 +111,9 @@ public:
     
     // Check if recording is active
     bool isRecording() const { return m_isRecording; }
+    
+    // Check if recording was canceled
+    bool isCanceled() const { return m_isCanceled.load(); }
     
     // Check if audio system is initialized
     bool isAudioSystemInitialized() const { return m_audioDeviceInitialized; }
@@ -159,6 +163,7 @@ private:
     // State
     std::atomic<bool> m_isRecording;
     std::atomic<bool> m_workerShouldStop;
+    std::atomic<bool> m_isCanceled;
     bool            m_audioDeviceInitialized;
     std::atomic<float> m_currentVolume;
     QFuture<void>   m_initFuture;

@@ -4,6 +4,8 @@
 #include <QObject>
 #include <QString>
 
+class QFile;
+
 // LAME is optional on macOS
 // Only include if LAME_INCLUDE_DIR is defined (set by CMake if found)
 #ifdef LAME_INCLUDE_DIR
@@ -42,6 +44,15 @@ private:
     
     // Finalize LAME encoder
     void finalizeLame();
+    
+    // Parse WAV header and extract audio parameters
+    struct WavInfo {
+        uint32_t sampleRate;
+        uint16_t numChannels;
+        uint32_t dataSize;
+        double durationSeconds;
+    };
+    bool parseWavHeader(QFile& wavFile, WavInfo& info);
     
     lame_global_flags* m_lameGlobal;
     bool m_lameInitialized;

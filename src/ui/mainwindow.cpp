@@ -21,6 +21,7 @@
 #include "core/audiorecorder.h"
 #include "core/openaitranscriptionservice.h"
 #include "core/statusutils.h"
+#include "core/formatutils.h"
 #include "config/config.h"
 
 #ifdef __APPLE__
@@ -204,15 +205,12 @@ void MainWindow::updateUI()
         int minutes = seconds / 60;
         seconds %= 60;
         
-        // Format file size in KB
-        float sizeKB = static_cast<float>(size) / 1024.0f;
-        
         // Only update recording info after we have some data (indicates initialization is complete)
         if (size > 0) {
-            QString infoText = QString("Recording... %1:%2 | Size: %3 KB")
+            QString infoText = QString("Recording... %1:%2 | Size: %3")
                     .arg(minutes, 2, 10, QChar('0'))
                     .arg(seconds, 2, 10, QChar('0'))
-                    .arg(sizeKB, 0, 'f', 2);
+                    .arg(formatFileSize(size));
             m_statusLabel->setText(infoText);
             
             // No need to change background on first data anymore, 
@@ -333,6 +331,12 @@ void MainWindow::updateVolumeBar(float volume)
 
 void MainWindow::onRecordingStopped()
 {
+    // If recording was canceled, don't do anything (files should already be removed)
+    if (m_recorder && m_recorder->isCanceled()) {
+        qInfo() << "Recording was canceled, skipping auto-transcription";
+        return;
+    }
+    
     m_statusLabel->setText("Recording Stopped. File saved.");
     m_statusLabel->setStyleSheet(STYLE_STATUS_SUCCESS);
     
@@ -427,25 +431,31 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
     
     if (event->key() == Qt::Key_Escape) {
         // Escape key pressed - cancel recording and hide window
-        qInfo() << "[INFO] Escape key pressed - canceling recording";
+        qInfo() << "Escape key pressed - canceling recording";
         
         // Set exit code for cancellation
         m_exitCode = APP_EXIT_FAILURE_CANCELED;
         qInfo() << "Exit code set to" << m_exitCode << "(CANCELED)";
         
-        // Stop recording
-        m_recorder->stopRecording();
+        // Cancel recording (will skip MP3 conversion)
+        m_recorder->cancelRecording();
         
         // Cancel transcription if in progress
         if (m_transcriptionService && m_transcriptionService->isTranscribing()) {
             m_transcriptionService->cancelTranscription();
         }
 
-        // Remove the audio file
-        QFile audioFile(OUTPUT_FILE_PATH);
-        if (audioFile.exists()) {
-            audioFile.remove();
-            qInfo() << "[INFO] Audio file removed:" << OUTPUT_FILE_PATH;
+        // Remove both WAV and MP3 files (if they exist)
+        QFile wavFile(OUTPUT_FILE_PATH_WAV);
+        if (wavFile.exists()) {
+            wavFile.remove();
+            qInfo() << "WAV file removed:" << OUTPUT_FILE_PATH_WAV;
+        }
+        
+        QFile mp3File(OUTPUT_FILE_PATH);
+        if (mp3File.exists()) {
+            mp3File.remove();
+            qInfo() << "MP3 file removed:" << OUTPUT_FILE_PATH;
         }
         
         // Create empty transcription file instead of removing it
@@ -456,7 +466,7 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
         if (transcriptionFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
             // Just create an empty file
             transcriptionFile.close();
-            qInfo() << "[INFO] Transcription file emptied:" << TRANSCRIPTION_OUTPUT_PATH;
+            qInfo() << "Transcription file emptied:" << TRANSCRIPTION_OUTPUT_PATH;
         }
         
         // Set status to ready (not idle)
@@ -476,6 +486,9 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
             m_recorder->pauseAudioStream();
         }
         
+        // Update tray icon to grey (ready state)
+        updateTrayIcon();
+        
         // Hide the window
         QTimer::singleShot(200, [this]() {
             hide();
@@ -485,14 +498,14 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
         // First check if transcription is in progress
         if (m_transcriptionService && m_transcriptionService->isTranscribing()) {
             // Don't hide if transcription is in progress
-            qInfo() << "[INFO] Enter/Space key pressed - waiting for transcription to complete";
+            qInfo() << "Enter/Space key pressed - waiting for transcription to complete";
             m_statusLabel->setText("Please wait for transcription to complete...");
             return;
         }
         
         // If recording is still active, stop it and begin the transcription process
         if (m_recorder->isRecording()) {
-            qInfo() << "[INFO] Enter/Space key pressed - stopping recording and saving";
+            qInfo() << "Enter/Space key pressed - stopping recording and saving";
             m_recorder->stopRecording();
             // Don't hide yet - onRecordingStopped will start transcription
             return;
@@ -500,12 +513,12 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
         
         // If we're here, recording is stopped and transcription is done
         // Hide window instead of exiting
-        qInfo() << "[INFO] Enter/Space key pressed - hiding window";
+        qInfo() << "Enter/Space key pressed - hiding window";
         hideAndReset();
     }
     else if (event->key() == Qt::Key_Q && (event->modifiers() & Qt::ControlModifier)) {
         // Ctrl+Q to actually exit the application
-        qInfo() << "[INFO] Ctrl+Q pressed - exiting application with code:" << m_exitCode;
+        qInfo() << "Ctrl+Q pressed - exiting application with code:" << m_exitCode;
         m_isClosingPermanently = true;
         QApplication::exit(m_exitCode);
     }
@@ -565,7 +578,7 @@ void MainWindow::showEvent(QShowEvent* event)
         m_recorder->resumeAudioStream();
     }
     
-    qInfo() << "[INFO] Window is now shown, UI reset";
+    qInfo() << "Window is now shown, UI reset";
 }
 
 void MainWindow::focusOutEvent(QFocusEvent* event)
@@ -619,7 +632,7 @@ void MainWindow::hideAndReset()
     // Hide the window - don't change status when window hides
     hide();
     
-    qInfo() << "[INFO] Window hidden, microphone paused, ready for next signal";
+    qInfo() << "Window hidden, microphone paused, ready for next signal";
 }
 
 void MainWindow::resetUIForNextRecording()
@@ -823,16 +836,7 @@ void MainWindow::onTranscriptionProgress(const QString& status)
         QString outputFilePath = m_recorder ? m_recorder->getOutputFilePath() : OUTPUT_FILE_PATH;
         QFileInfo fileInfo(outputFilePath);
         if (fileInfo.exists()) {
-            qint64 fileSizeBytes = fileInfo.size();
-            double fileSizeKB = fileSizeBytes / 1024.0;
-            double fileSizeMB = fileSizeKB / 1024.0;
-            
-            QString sizeStr;
-            if (fileSizeMB >= 1.0) {
-                sizeStr = QString::number(fileSizeMB, 'f', 2) + " MB";
-            } else {
-                sizeStr = QString::number(fileSizeKB, 'f', 2) + " KB";
-            }
+            QString sizeStr = formatFileSize(fileInfo.size());
             
             // Extract percentage if present, otherwise just show status with size
             if (status.contains("%")) {
@@ -948,7 +952,7 @@ void MainWindow::onGlobalHotkeyActivated()
 {
     // If window is visible and recording, stop recording
     if (isVisible() && m_recorder && m_recorder->isRecording()) {
-        qInfo() << "[INFO] Global hotkey activated - stopping recording";
+        qInfo() << "Global hotkey activated - stopping recording";
         m_recorder->stopRecording();
         return;
     }
@@ -958,7 +962,7 @@ void MainWindow::onGlobalHotkeyActivated()
         return;
     }
     
-    qInfo() << "[INFO] Global hotkey activated - starting recording";
+    qInfo() << "Global hotkey activated - starting recording";
     
     // Show window first
     show();
@@ -969,7 +973,7 @@ void MainWindow::onGlobalHotkeyActivated()
     for (const auto& f : QStringList{OUTPUT_FILE_PATH, TRANSCRIPTION_OUTPUT_PATH}) {
         QFile file(f);
         if (file.exists() && file.remove()) {
-            qInfo() << "[DEBUG] Removed previous file:" << f;
+            qDebug() << "Removed previous file:" << f;
         }
     }
     
@@ -1029,19 +1033,25 @@ void MainWindow::setupSystemTrayIcon()
             m_exitCode = APP_EXIT_FAILURE_CANCELED;
             qInfo() << "Exit code set to" << m_exitCode << "(CANCELED)";
             
-            // Stop recording
-            m_recorder->stopRecording();
+            // Cancel recording (will skip MP3 conversion)
+            m_recorder->cancelRecording();
             
             // Cancel transcription if in progress
             if (m_transcriptionService && m_transcriptionService->isTranscribing()) {
                 m_transcriptionService->cancelTranscription();
             }
 
-            // Remove the audio file
-            QFile audioFile(OUTPUT_FILE_PATH);
-            if (audioFile.exists()) {
-                audioFile.remove();
-                qInfo() << "[INFO] Audio file removed:" << OUTPUT_FILE_PATH;
+            // Remove both WAV and MP3 files (if they exist)
+            QFile wavFile(OUTPUT_FILE_PATH_WAV);
+            if (wavFile.exists()) {
+                wavFile.remove();
+                qInfo() << "WAV file removed:" << OUTPUT_FILE_PATH_WAV;
+            }
+            
+            QFile mp3File(OUTPUT_FILE_PATH);
+            if (mp3File.exists()) {
+                mp3File.remove();
+                qInfo() << "MP3 file removed:" << OUTPUT_FILE_PATH;
             }
             
             // Create empty transcription file instead of removing it
@@ -1051,7 +1061,7 @@ void MainWindow::setupSystemTrayIcon()
             }
             if (transcriptionFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
                 transcriptionFile.close();
-                qInfo() << "[INFO] Transcription file emptied:" << TRANSCRIPTION_OUTPUT_PATH;
+                qInfo() << "Transcription file emptied:" << TRANSCRIPTION_OUTPUT_PATH;
             }
             
             // Set status to ready
@@ -1070,6 +1080,9 @@ void MainWindow::setupSystemTrayIcon()
             if (m_recorder) {
                 m_recorder->pauseAudioStream();
             }
+            
+            // Update tray icon to grey (ready state)
+            updateTrayIcon();
             
             // Hide the window
             QTimer::singleShot(200, [this]() {
