@@ -368,10 +368,7 @@ void MainWindow::onRecordingStopped()
         // Update status for transcription
         m_statusLabel->setText("Please wait while transcription completes...");
         
-        // Slight delay to update UI before starting transcription
-        QTimer::singleShot(500, this, [this]() {
-            onTranscribeButtonClicked();
-        });
+        onTranscribeButtonClicked();
     } else if (!m_hasApiKey) {
         m_transcriptionLabel->setText("NO API KEY - Transcription unavailable");
         m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_ERROR);
