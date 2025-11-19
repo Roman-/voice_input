@@ -10,10 +10,13 @@
 #include <QBuffer>
 #include <QThread>
 #include <QTimer>
+#include <QVector>
+#include <QString>
 #include <atomic>
 #include <cstring>
 #include <portaudio.h>
 
+#include "config/config.h"
 #include "timingtracker.h"
 
 class AudioConverter;
@@ -88,6 +91,13 @@ class AudioRecorder : public QObject
 {
     Q_OBJECT
 public:
+    struct AudioInputDevice {
+        int id = paNoDevice;
+        QString name;
+        int maxInputChannels = 0;
+        double defaultSampleRate = SAMPLE_RATE;
+    };
+
     explicit AudioRecorder(QObject* parent = nullptr);
     ~AudioRecorder();
 
@@ -126,6 +136,13 @@ public:
     // Check if audio stream is active
     bool isAudioStreamActive() const;
 
+    // Device enumeration helpers
+    QVector<AudioInputDevice> availableInputDevices() const;
+    int currentInputDeviceId() const;
+    QString currentInputDeviceName() const;
+    bool setInputDevice(int deviceId);
+    bool refreshInputDeviceList();
+
 signals:
     void volumeChanged(float newVolume);
     void recordingStopped();
@@ -134,10 +151,14 @@ signals:
     void conversionStarted();
     void conversionCompleted(const QString& mp3Path);
     void conversionFailed(const QString& errorMessage);
+    void deviceListChanged();
+    void inputDeviceChanged(int deviceId, const QString& deviceName);
 
 private:
     bool initializePortAudio(bool startStreamImmediately = true);
     void finalizePortAudio();
+    bool refreshAvailableDevices();
+    bool isValidDeviceId(int deviceId) const;
 
     static int audioCallback( const void *inputBuffer,
                               void *outputBuffer,
@@ -184,6 +205,10 @@ private:
     // Audio converter for WAV to MP3 conversion
     AudioConverter* m_audioConverter;
     TimingTracker   m_timingTracker;
+    QVector<AudioInputDevice> m_inputDevices;
+    mutable QMutex  m_deviceMutex;
+    int             m_selectedDeviceId;
+    int             m_currentDeviceId;
 };
 
 #endif // AUDIORECORDER_H

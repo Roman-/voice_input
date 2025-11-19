@@ -15,6 +15,7 @@
 #include <QPixmap>
 #include <QPainter>
 #include <QAction>
+#include <QActionGroup>
 #include <QScreen>
 #include <QEvent>
 #include <QTimer>
@@ -59,7 +60,9 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
       m_trayMenu(nullptr),
       m_finishRecordingAction(nullptr),
       m_cancelRecordingAction(nullptr),
-      m_isUploading(false)
+      m_isUploading(false),
+      m_microphoneMenu(nullptr),
+      m_microphoneActionGroup(nullptr)
 {
     // Set window properties
     setWindowTitle("Audio Recorder");
@@ -125,6 +128,8 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     connect(m_recorder, &AudioRecorder::recordingStopped, this, &MainWindow::onRecordingStopped);
     connect(m_recorder, &AudioRecorder::recordingStarted, this, &MainWindow::onRecordingStarted);
     connect(m_recorder, &AudioRecorder::audioDeviceReady, this, &MainWindow::onAudioDeviceReady);
+    connect(m_recorder, &AudioRecorder::deviceListChanged, this, &MainWindow::rebuildMicrophoneMenu);
+    connect(m_recorder, &AudioRecorder::inputDeviceChanged, this, &MainWindow::onInputDeviceChanged);
     
     // Connect conversion signals
     connect(m_recorder, &AudioRecorder::conversionStarted, this, &MainWindow::onConversionStarted);
@@ -1150,6 +1155,11 @@ void MainWindow::setupSystemTrayIcon()
     });
     m_trayMenu->addAction(cancelRecordingAction);
     
+    m_microphoneMenu = new QMenu("Microphone", m_trayMenu);
+    connect(m_microphoneMenu, &QMenu::aboutToShow, this, &MainWindow::rebuildMicrophoneMenu);
+    m_trayMenu->addMenu(m_microphoneMenu);
+    rebuildMicrophoneMenu();
+
     m_trayMenu->addSeparator();
     
     QAction* quitAction = new QAction("Quit", this);
@@ -1176,12 +1186,110 @@ void MainWindow::setupSystemTrayIcon()
     qInfo() << "System tray icon initialized";
 }
 
+void MainWindow::rebuildMicrophoneMenu()
+{
+    if (!m_microphoneMenu) {
+        return;
+    }
+
+    m_microphoneMenu->clear();
+
+    if (m_microphoneActionGroup) {
+        delete m_microphoneActionGroup;
+        m_microphoneActionGroup = nullptr;
+    }
+
+    m_microphoneActionGroup = new QActionGroup(m_microphoneMenu);
+    m_microphoneActionGroup->setExclusive(true);
+
+    if (!m_recorder) {
+        QAction* action = m_microphoneMenu->addAction("Recorder unavailable");
+        action->setEnabled(false);
+        return;
+    }
+
+    m_recorder->refreshInputDeviceList();
+    const auto devices = m_recorder->availableInputDevices();
+    if (devices.isEmpty()) {
+        QAction* action = m_microphoneMenu->addAction("No microphones found");
+        action->setEnabled(false);
+        return;
+    }
+
+    bool isRecording = m_recorder->isRecording();
+    int currentId = m_recorder->currentInputDeviceId();
+
+    for (const auto& device : devices) {
+        QString label = QString("%1 (%2 ch)").arg(device.name.isEmpty() ? QStringLiteral("Unknown") : device.name)
+                                             .arg(device.maxInputChannels);
+        QAction* action = m_microphoneMenu->addAction(label);
+        action->setCheckable(true);
+        action->setChecked(device.id == currentId);
+        action->setData(device.id);
+        action->setEnabled(!isRecording);
+        connect(action, &QAction::triggered, this, [this, deviceId = device.id]() {
+            handleMicrophoneSelection(deviceId);
+        });
+        m_microphoneActionGroup->addAction(action);
+    }
+
+    if (isRecording) {
+        QAction* note = m_microphoneMenu->addAction("Stop recording to switch microphones");
+        note->setEnabled(false);
+    }
+}
+
+void MainWindow::handleMicrophoneSelection(int deviceId)
+{
+    if (!m_recorder) {
+        return;
+    }
+
+    if (m_recorder->isRecording()) {
+        QMessageBox::information(this,
+                                 "Cannot Switch Microphone",
+                                 "Stop recording before changing microphones.");
+        return;
+    }
+
+    if (!m_recorder->setInputDevice(deviceId)) {
+        QMessageBox::warning(this,
+                             "Microphone Switch Failed",
+                             "Unable to switch microphones. Please check the log for more details.");
+        return;
+    }
+
+    QString deviceName = m_recorder->currentInputDeviceName();
+    if (!deviceName.isEmpty()) {
+        m_statusLabel->setText(QString("Microphone ready: %1").arg(deviceName));
+        m_statusLabel->setStyleSheet(STYLE_STATUS_NEUTRAL);
+    }
+}
+
+void MainWindow::onInputDeviceChanged(int /*deviceId*/, const QString& deviceName)
+{
+    if (!deviceName.isEmpty() &&
+        m_statusLabel &&
+        !m_recorder->isRecording() &&
+        !(m_transcriptionService && m_transcriptionService->isTranscribing())) {
+        m_statusLabel->setText(QString("Microphone ready: %1").arg(deviceName));
+        m_statusLabel->setStyleSheet(STYLE_STATUS_NEUTRAL);
+    }
+
+    rebuildMicrophoneMenu();
+    updateTrayIcon();
+}
+
 void MainWindow::updateTrayIcon()
 {
     if (!m_trayIcon) return;
     
     QString color;
     QString tooltip;
+    QString currentDeviceName;
+    if (m_recorder) {
+        currentDeviceName = m_recorder->currentInputDeviceName();
+    }
     
     // Determine current state
     bool isRecording = m_recorder && m_recorder->isRecording();
@@ -1229,6 +1337,9 @@ void MainWindow::updateTrayIcon()
     
     QIcon icon = createTrayIcon(color);
     m_trayIcon->setIcon(icon);
+    if (!currentDeviceName.isEmpty()) {
+        tooltip += QString(" (%1)").arg(currentDeviceName);
+    }
     m_trayIcon->setToolTip(tooltip);
     
     // Update finish and cancel recording actions state

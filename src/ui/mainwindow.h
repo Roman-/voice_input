@@ -10,6 +10,7 @@
 #include <QMenu>
 #include <QElapsedTimer>
 
+class QActionGroup;
 class AudioRecorder;
 class OpenAiTranscriptionService;
 
@@ -50,6 +51,8 @@ private slots:
     
     // Global hotkey slot
     void onGlobalHotkeyActivated();
+    void rebuildMicrophoneMenu();
+    void onInputDeviceChanged(int deviceId, const QString& deviceName);
 
 protected:
     // Override key press event to handle Enter/Escape keys
@@ -76,6 +79,7 @@ private:
     void setupSystemTrayIcon(); // Setup system tray icon for macOS menu bar
     void updateTrayIcon(); // Update tray icon based on current state
     QIcon createTrayIcon(const QString& color); // Create programmatic icon with color
+    void handleMicrophoneSelection(int deviceId);
 
 private:
     AudioRecorder* m_recorder;
@@ -96,6 +100,8 @@ private:
     QMenu*          m_trayMenu;  // Context menu for tray icon
     QAction*        m_finishRecordingAction; // Action to finish recording from tray menu
     QAction*        m_cancelRecordingAction; // Action to cancel recording from tray menu
+    QMenu*          m_microphoneMenu;
+    QActionGroup*   m_microphoneActionGroup;
     bool            m_isUploading; // Track if transcription is in uploading phase vs processing phase
     QElapsedTimer   m_uploadTimer;
     bool            m_uploadTimerActive{false};

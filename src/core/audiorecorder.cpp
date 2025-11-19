@@ -5,6 +5,7 @@
 #include <QFileInfo>
 #include <QDateTime>
 #include <QThread>
+#include <QMutexLocker>
 #include <cmath>
 #include <cstring>
 #include <array>
@@ -42,7 +43,9 @@ AudioRecorder::AudioRecorder(QObject* parent)
       m_pcmBytesWritten(0),
       m_ringBuffer(nullptr),
       m_volumePollTimer(nullptr),
-      m_audioConverter(new AudioConverter(this))
+      m_audioConverter(new AudioConverter(this)),
+      m_selectedDeviceId(paNoDevice),
+      m_currentDeviceId(paNoDevice)
 {
     // Connect AudioConverter signals to AudioRecorder signals
     connect(m_audioConverter, &AudioConverter::conversionStarted, this, &AudioRecorder::conversionStarted);
@@ -140,6 +143,77 @@ bool AudioRecorder::isAudioStreamActive() const
     }
     
     return Pa_IsStreamActive(m_stream) == 1;
+}
+
+QVector<AudioRecorder::AudioInputDevice> AudioRecorder::availableInputDevices() const
+{
+    QMutexLocker locker(&m_deviceMutex);
+    return m_inputDevices;
+}
+
+int AudioRecorder::currentInputDeviceId() const
+{
+    return m_currentDeviceId;
+}
+
+QString AudioRecorder::currentInputDeviceName() const
+{
+    QMutexLocker locker(&m_deviceMutex);
+    for (const auto& device : m_inputDevices) {
+        if (device.id == m_currentDeviceId) {
+            return device.name;
+        }
+    }
+    return QString();
+}
+
+bool AudioRecorder::setInputDevice(int deviceId)
+{
+    if (!m_audioDeviceInitialized) {
+        qWarning() << "Cannot switch microphone - audio system not initialized";
+        return false;
+    }
+
+    if (m_isRecording.load()) {
+        qWarning() << "Cannot switch microphone while recording is active";
+        return false;
+    }
+
+    if (deviceId == m_currentDeviceId) {
+        qInfo() << "Requested microphone is already active";
+        return true;
+    }
+
+    if (!isValidDeviceId(deviceId)) {
+        qWarning() << "Invalid microphone id" << deviceId << "requested";
+        return false;
+    }
+
+    int previousDeviceId = m_currentDeviceId;
+
+    finalizePortAudio();
+    m_selectedDeviceId = deviceId;
+
+    if (!initializePortAudio()) {
+        qCritical() << "Failed to switch to microphone id" << deviceId << "- attempting to revert";
+        if (isValidDeviceId(previousDeviceId)) {
+            m_selectedDeviceId = previousDeviceId;
+            if (!initializePortAudio()) {
+                qCritical() << "Failed to restore previous microphone as well.";
+            }
+        }
+        return false;
+    }
+
+    return true;
+}
+
+bool AudioRecorder::refreshInputDeviceList()
+{
+    if (!m_audioDeviceInitialized) {
+        return false;
+    }
+    return refreshAvailableDevices();
 }
 
 bool AudioRecorder::startRecording()
@@ -331,6 +405,7 @@ QString AudioRecorder::getOutputFilePath() const
 
 bool AudioRecorder::initializePortAudio(bool startStreamImmediately)
 {
+    Q_UNUSED(startStreamImmediately);
     qDebug() << "Initializing PortAudio";
 
     // Try to terminate any prior instances first, for safety
@@ -343,38 +418,55 @@ bool AudioRecorder::initializePortAudio(bool startStreamImmediately)
         return false;
     }
     
-    // Ensure we have at least one input device
-    int numDevices = Pa_GetDeviceCount();
-    if (numDevices < 1) {
-        qCritical() << "No audio devices found!";
+    if (!refreshAvailableDevices()) {
+        qCritical() << "No audio input devices available";
         Pa_Terminate();
         return false;
     }
-    
-    // Find the default input device
-    int defaultInputDevice = Pa_GetDefaultInputDevice();
-    if (defaultInputDevice == paNoDevice) {
-        qCritical() << "No default input device!";
+
+    int selectedDevice = m_selectedDeviceId;
+    if (!isValidDeviceId(selectedDevice)) {
+        selectedDevice = Pa_GetDefaultInputDevice();
+    }
+
+    if (!isValidDeviceId(selectedDevice)) {
+        auto devices = availableInputDevices();
+        if (!devices.isEmpty()) {
+            selectedDevice = devices.first().id;
+        }
+    }
+
+    if (!isValidDeviceId(selectedDevice)) {
+        qCritical() << "Unable to determine a valid input device";
         Pa_Terminate();
         return false;
     }
-    
-    // Log device info
-    const PaDeviceInfo* deviceInfo = Pa_GetDeviceInfo(defaultInputDevice);
-    if (deviceInfo) {
-        qInfo() << "Using input device:" << deviceInfo->name 
-                << "with" << deviceInfo->maxInputChannels << "channels";
-        m_sampleRate = deviceInfo->defaultSampleRate;
-    } else {
-        m_sampleRate = SAMPLE_RATE;
+
+    const PaDeviceInfo* deviceInfo = Pa_GetDeviceInfo(selectedDevice);
+    if (!deviceInfo) {
+        qCritical() << "Failed to query device info for id" << selectedDevice;
+        Pa_Terminate();
+        return false;
     }
+
+    qInfo() << "Using input device:" << deviceInfo->name
+            << "with" << deviceInfo->maxInputChannels << "channels";
+
+    m_sampleRate = deviceInfo->defaultSampleRate;
 
     // Use Pa_OpenStream with suggestedLatency for low latency
     PaStreamParameters in;
-    in.device = defaultInputDevice;
-    in.channelCount = NUM_CHANNELS;
+    in.device = selectedDevice;
+    int channelCount = NUM_CHANNELS;
+    if (deviceInfo->maxInputChannels > 0) {
+        channelCount = qMin(NUM_CHANNELS, deviceInfo->maxInputChannels);
+    }
+    if (channelCount <= 0) {
+        channelCount = 1;
+    }
+    in.channelCount = channelCount;
     in.sampleFormat = paInt16;
-    in.suggestedLatency = deviceInfo ? deviceInfo->defaultLowInputLatency : 0.01;
+    in.suggestedLatency = deviceInfo->defaultLowInputLatency;
     in.hostApiSpecificStreamInfo = nullptr;
 
     err = Pa_OpenStream(&m_stream,
@@ -390,13 +482,16 @@ bool AudioRecorder::initializePortAudio(bool startStreamImmediately)
         Pa_Terminate();
         return false;
     }
-    
+
     // Initialize ring buffer for real-time safe audio capture
-    // Allocate enough for ~500ms of pre-roll at the sample rate
     size_t ringBufferFrames = static_cast<size_t>(m_sampleRate * 0.5); // 500ms
     size_t ringBufferSize = ringBufferFrames * sizeof(int16_t) * NUM_CHANNELS;
+
+    if (m_ringBuffer) {
+        delete m_ringBuffer;
+    }
     m_ringBuffer = new LockFreeRingBuffer(ringBufferSize);
-    
+
     qInfo() << "Ring buffer initialized:" << ringBufferSize << "bytes for" << ringBufferFrames << "frames";
 
     // Always start the stream (for pre-roll)
@@ -405,16 +500,84 @@ bool AudioRecorder::initializePortAudio(bool startStreamImmediately)
         qCritical() << "Pa_StartStream() failed:" << Pa_GetErrorText(err);
         Pa_CloseStream(m_stream);
         m_stream = nullptr;
-        if (m_ringBuffer) {
-            delete m_ringBuffer;
-            m_ringBuffer = nullptr;
-        }
+        delete m_ringBuffer;
+        m_ringBuffer = nullptr;
         Pa_Terminate();
         return false;
     }
-    
+
+    int previousDeviceId = m_currentDeviceId;
+    m_currentDeviceId = selectedDevice;
+    m_selectedDeviceId = selectedDevice;
+
+    if (previousDeviceId != m_currentDeviceId) {
+        emit inputDeviceChanged(m_currentDeviceId, currentInputDeviceName());
+    }
+
     qDebug() << "PortAudio stream opened and started successfully";
     return true;
+}
+
+bool AudioRecorder::refreshAvailableDevices()
+{
+    QVector<AudioInputDevice> devices;
+    int numDevices = Pa_GetDeviceCount();
+
+    for (int i = 0; i < numDevices; ++i) {
+        const PaDeviceInfo* info = Pa_GetDeviceInfo(i);
+        if (!info || info->maxInputChannels <= 0) {
+            continue;
+        }
+
+        AudioInputDevice device;
+        device.id = i;
+        device.name = QString::fromUtf8(info->name);
+        device.maxInputChannels = info->maxInputChannels;
+        device.defaultSampleRate = info->defaultSampleRate;
+        devices.append(device);
+    }
+
+    bool changed = false;
+    {
+        QMutexLocker locker(&m_deviceMutex);
+        if (devices.size() != m_inputDevices.size()) {
+            changed = true;
+        } else {
+            for (int i = 0; i < devices.size(); ++i) {
+                const auto& lhs = devices[i];
+                const auto& rhs = m_inputDevices[i];
+                if (lhs.id != rhs.id ||
+                    lhs.name != rhs.name ||
+                    lhs.maxInputChannels != rhs.maxInputChannels ||
+                    std::abs(lhs.defaultSampleRate - rhs.defaultSampleRate) > 0.001) {
+                    changed = true;
+                    break;
+                }
+            }
+        }
+        m_inputDevices = devices;
+    }
+
+    if (changed) {
+        emit deviceListChanged();
+    }
+
+    return !devices.isEmpty();
+}
+
+bool AudioRecorder::isValidDeviceId(int deviceId) const
+{
+    if (deviceId == paNoDevice) {
+        return false;
+    }
+
+    QMutexLocker locker(&m_deviceMutex);
+    for (const auto& device : m_inputDevices) {
+        if (device.id == deviceId) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void AudioRecorder::finalizePortAudio()
@@ -432,6 +595,8 @@ void AudioRecorder::finalizePortAudio()
         delete m_ringBuffer;
         m_ringBuffer = nullptr;
     }
+
+    m_currentDeviceId = paNoDevice;
 }
 
 int AudioRecorder::audioCallback( const void *inputBuffer,
