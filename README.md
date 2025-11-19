@@ -37,25 +37,17 @@ make -j$(sysctl -n hw.ncpu)
 
 ### Window Visibility
 
-The application provides flexible window visibility control:
-
-- **"Always Show Window" checkbox** in the system tray menu (checked by default)
-  - When **checked**: Window is always visible in top-right corner, showing recording status and volume meter
-  - When **unchecked**: Window never appears, tray icon color provides visual feedback
-- Window accepts keyboard input when visible (press `Esc` to cancel recording)
-- Closing the window (clicking X) automatically unchecks "Always Show Window"
-- When not recording, window shows "Ready - waiting for signal" status
-- Tray icon color indicates state: grey (ready), red (recording), yellow (processing)
+Control window visibility via **"Always Show Window"** checkbox in the system tray menu:
+- **Checked (default)**: Window always visible in top-right corner showing status, volume meter
+- **Unchecked**: Window hidden, tray icon color provides feedback (grey=ready, red=recording, yellow=processing)
+- Closing window (X button) automatically unchecks "Always Show Window"
 
 ### Recording Workflow
 
-1. Launch the application (window visible by default in top-right corner)
-2. Press `Option+Space` or send SIGUSR1 to start recording
-3. Speak your text (window shows volume meter if visible)
-4. Press `Option+Space` again to stop recording
-5. Wait for transcription (status updates shown if window visible)
-6. Transcribed text automatically pastes into the active application
-7. Window remains visible showing "Ready - waiting for signal"
+1. Press `Option+Space` or `kill -SIGUSR1 <PID>` to start recording
+2. Press again to stop and transcribe
+3. Press `Esc` to cancel (only works while recording/transcribing)
+4. Transcribed text automatically pastes into active application
 
 ## Configuration
 

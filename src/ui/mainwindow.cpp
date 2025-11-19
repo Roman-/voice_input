@@ -67,7 +67,7 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
       m_alwaysShowWindow(true)
 {
     // Set window properties
-    setWindowTitle("🎤 Recording");
+    setWindowTitle("Voice Input");
     resize(450, 320);
     
     // Simple window flags: Stay on top, allow keyboard input
@@ -470,6 +470,15 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
     }
     
     if (event->key() == Qt::Key_Escape) {
+        // Only cancel if actually recording or transcribing
+        bool isRecording = m_recorder->isRecording();
+        bool isTranscribing = m_transcriptionService && m_transcriptionService->isTranscribing();
+        
+        if (!isRecording && !isTranscribing) {
+            // Not recording or transcribing - do nothing
+            return;
+        }
+        
         // Escape key pressed - cancel recording and hide window
         qInfo() << "Escape key pressed - canceling recording";
         
