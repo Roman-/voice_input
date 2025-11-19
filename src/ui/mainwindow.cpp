@@ -60,21 +60,41 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
       m_trayMenu(nullptr),
       m_finishRecordingAction(nullptr),
       m_cancelRecordingAction(nullptr),
+      m_showWindowAction(nullptr),
       m_isUploading(false),
       m_microphoneMenu(nullptr),
-      m_microphoneActionGroup(nullptr)
+      m_microphoneActionGroup(nullptr),
+      m_alwaysShowWindow(true)
 {
     // Set window properties
-    setWindowTitle("Audio Recorder");
-    resize(400, 320);  // Increased size to accommodate transcription UI
+    setWindowTitle("🎤 Recording");
+    resize(450, 320);
     
-    // Set window flags for tool window behavior - always on top
-    setWindowFlags(Qt::Tool | Qt::WindowStaysOnTopHint | Qt::WindowCloseButtonHint);
-    setFocusPolicy(Qt::StrongFocus);
-    setAttribute(Qt::WA_ShowWithoutActivating, false);
+    // Simple window flags: Stay on top, allow keyboard input
+    setWindowFlags(Qt::Window | Qt::WindowStaysOnTopHint);
+    setAutoFillBackground(true);
+    
+    // Styled with visible border
+    setStyleSheet(
+        "QMainWindow {"
+        "    background-color: rgb(30, 30, 40);"
+        "    border: 2px solid rgb(92, 170, 255);"
+        "    border-radius: 8px;"
+        "}"
+    );
+    
+    // Set initial position in top-right corner (only once)
+    QScreen* screen = QApplication::primaryScreen();
+    if (screen) {
+        QRect screenGeometry = screen->geometry();
+        int x = screenGeometry.x() + screenGeometry.width() - 450 - 20;
+        int y = screenGeometry.y() + 60;
+        move(x, y);
+    }
     
     // Basic UI setup
     auto central = new QWidget(this);
+    central->setStyleSheet("background-color: rgb(30, 30, 40);");
     auto layout = new QVBoxLayout(central);
 
     // Configure all labels to be center-aligned
@@ -201,8 +221,11 @@ void MainWindow::updateUI()
 {
     if (!m_recorder) return;
     
-    // Only update timer and size if recording is still active
+    // Update UI based on recording state
     if (m_recorder->isRecording()) {
+        // Show volume bar when recording
+        m_volumeBar->setVisible(true);
+        
         qint64 size = m_recorder->fileSize();
         qint64 elapsed = m_recorder->elapsedMs();
         
@@ -222,6 +245,13 @@ void MainWindow::updateUI()
             // No need to change background on first data anymore, 
             // that's handled by onRecordingStarted()
         }
+    } else {
+        // Hide volume bar when not recording
+        m_volumeBar->setVisible(false);
+        
+        // Show ready status when not recording
+        m_statusLabel->setText("Ready - waiting for signal");
+        m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #5CAAFF;");
     }
 }
 
@@ -543,80 +573,38 @@ void MainWindow::closeEvent(QCloseEvent* event)
         // Allow the close if we're actually exiting
         event->accept();
     } else {
-        // Just hide the window instead of closing the application
+        // User closed window = uncheck "Always Show Window" option
         event->ignore();
-        hideAndReset();
+        m_alwaysShowWindow = false;
+        if (m_showWindowAction) {
+            m_showWindowAction->setChecked(false);
+        }
+        hide();
     }
 }
 
 void MainWindow::showEvent(QShowEvent* event)
 {
     QMainWindow::showEvent(event);
-    
-    // Center window on screen
-    QScreen* screen = QApplication::primaryScreen();
-    if (screen) {
-        QRect screenGeometry = screen->geometry();
-        QRect windowGeometry = geometry();
-        int x = (screenGeometry.width() - windowGeometry.width()) / 2 + screenGeometry.x();
-        int y = (screenGeometry.height() - windowGeometry.height()) / 2 + screenGeometry.y();
-        move(x, y);
-    }
-    
-    // Ensure keyboard focus is captured immediately
-    setFocus();
-    activateWindow();
-    
-    // Restore the default UI colors
-    QPalette pal = palette();
-    pal.setColor(QPalette::Window, QColor(30, 30, 40));        // Dark blue-gray background
-    pal.setColor(QPalette::WindowText, QColor(220, 220, 220)); // Light gray text
-    pal.setColor(QPalette::Text, QColor(220, 220, 220));       // Light gray text for widgets
-    setPalette(pal);
-    
-    // Reset status text style to be bold and larger with distinctive color
-    m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #5CAAFF;");
-    m_statusLabel->setText("Initializing... (Press Enter/Space to save, Esc to cancel)");
-    
-    // Reset transcription label to avoid stale messages
-    m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_NEUTRAL);
-    m_transcriptionLabel->setText("Ready for transcription");
-    m_transcribeButton->setVisible(false);
-    
-    // Restart the audio stream if it was paused
-    if (m_recorder && !m_recorder->isAudioStreamActive()) {
-        m_recorder->resumeAudioStream();
-    }
-    
-    qInfo() << "Window is now shown, UI reset";
+    // No positioning, no raise/activate - window positioning is set once in constructor
 }
 
 void MainWindow::focusOutEvent(QFocusEvent* event)
 {
-    // If recording is active, try to regain focus to prevent losing the window
-    if (m_recorder && m_recorder->isRecording()) {
-        QTimer::singleShot(100, this, [this]() {
-            if (m_recorder && m_recorder->isRecording()) {
-                raise();
-                activateWindow();
-                setFocus();
-            }
-        });
-    }
+    // DO NOT try to regain focus - we want to remain non-intrusive
+    // The window is visible but should never steal focus from the user's work
     QMainWindow::focusOutEvent(event);
 }
 
 void MainWindow::changeEvent(QEvent* event)
 {
-    // If window is minimized or hidden while recording, bring it back
+    // If window is minimized or hidden while recording, bring it back but don't steal focus
     if (event->type() == QEvent::WindowStateChange) {
         if (m_recorder && m_recorder->isRecording()) {
             QTimer::singleShot(100, this, [this]() {
                 if (m_recorder && m_recorder->isRecording() && !isVisible()) {
                     show();
-                    raise();
-                    activateWindow();
-                    setFocus();
+                    // DO NOT call raise(), activateWindow(), or setFocus()
                 }
             });
         }
@@ -639,10 +627,13 @@ void MainWindow::hideAndReset()
         m_recorder->pauseAudioStream();
     }
     
-    // Hide the window - don't change status when window hides
-    hide();
-    
-    qInfo() << "Window hidden, microphone paused, ready for next signal";
+    // Only hide if user wants window hidden
+    if (!m_alwaysShowWindow) {
+        hide();
+        qInfo() << "Window hidden (user preference), microphone paused, ready for next signal";
+    } else {
+        qInfo() << "Window remains visible (user preference), microphone paused, ready for next signal";
+    }
 }
 
 void MainWindow::resetUIForNextRecording()
@@ -1013,35 +1004,28 @@ void MainWindow::setupGlobalHotkey()
 
 void MainWindow::onGlobalHotkeyActivated()
 {
-    // If window is visible and recording, stop recording
-    if (isVisible() && m_recorder && m_recorder->isRecording()) {
+    qInfo() << "Global hotkey activated - recording:" << (m_recorder && m_recorder->isRecording());
+    
+    if (!m_recorder) return;
+    
+    // Toggle recording state (regardless of window visibility)
+    if (m_recorder->isRecording()) {
+        // Stop recording
         qInfo() << "Global hotkey activated - stopping recording";
         m_recorder->stopRecording();
-        return;
-    }
-    
-    // If already recording (but window not visible), don't start another
-    if (m_recorder && m_recorder->isRecording()) {
-        return;
-    }
-    
-    qInfo() << "Global hotkey activated - starting recording";
-    
-    // Show window first
-    show();
-    raise();
-    activateWindow();
-    
-    // Clean up any previous files
-    for (const auto& f : QStringList{OUTPUT_FILE_PATH, TRANSCRIPTION_OUTPUT_PATH}) {
-        QFile file(f);
-        if (file.exists() && file.remove()) {
-            qDebug() << "Removed previous file:" << f;
+    } else {
+        // Start recording
+        qInfo() << "Global hotkey activated - starting recording";
+        
+        // Clean up any previous files
+        for (const auto& f : QStringList{OUTPUT_FILE_PATH, TRANSCRIPTION_OUTPUT_PATH}) {
+            QFile file(f);
+            if (file.exists() && file.remove()) {
+                qDebug() << "Removed previous file:" << f;
+            }
         }
-    }
-    
-    // Start recording
-    if (m_recorder) {
+        
+        // Start recording
         m_recorder->startRecording();
         setFileStatus(STATUS_BUSY);
     }
@@ -1066,14 +1050,8 @@ void MainWindow::setupSystemTrayIcon()
     finishRecordingAction->setEnabled(false); // Enabled only when recording
     connect(finishRecordingAction, &QAction::triggered, this, [this]() {
         if (m_recorder && m_recorder->isRecording()) {
-            // Show window if hidden
-            if (!isVisible()) {
-                show();
-                raise();
-                activateWindow();
-                setFocus();
-            }
             // Stop recording - this will trigger transcription
+            // No show/hide manipulation
             m_recorder->stopRecording();
         }
     });
@@ -1084,15 +1062,8 @@ void MainWindow::setupSystemTrayIcon()
     cancelRecordingAction->setEnabled(false); // Enabled only when recording
     connect(cancelRecordingAction, &QAction::triggered, this, [this]() {
         if (m_recorder && m_recorder->isRecording()) {
-            // Show window if hidden
-            if (!isVisible()) {
-                show();
-                raise();
-                activateWindow();
-                setFocus();
-            }
-            
             // Set exit code for cancellation
+            // No show/hide manipulation
             m_exitCode = APP_EXIT_FAILURE_CANCELED;
             qInfo() << "Exit code set to" << m_exitCode << "(CANCELED)";
             
@@ -1147,13 +1118,28 @@ void MainWindow::setupSystemTrayIcon()
             // Update tray icon to grey (ready state)
             updateTrayIcon();
             
-            // Hide the window
-            QTimer::singleShot(200, [this]() {
-                hide();
-            });
+            // No hide - window visibility controlled by user preference
         }
     });
     m_trayMenu->addAction(cancelRecordingAction);
+    
+    m_trayMenu->addSeparator();
+    
+    // Always Show Window toggle
+    m_showWindowAction = new QAction("Always Show Window", this);
+    m_showWindowAction->setCheckable(true);
+    m_showWindowAction->setChecked(true); // Checked by default
+    connect(m_showWindowAction, &QAction::triggered, this, [this](bool checked) {
+        m_alwaysShowWindow = checked;
+        if (checked) {
+            show();
+        } else {
+            hide();
+        }
+    });
+    m_trayMenu->addAction(m_showWindowAction);
+    
+    m_trayMenu->addSeparator();
     
     m_microphoneMenu = new QMenu("Microphone", m_trayMenu);
     connect(m_microphoneMenu, &QMenu::aboutToShow, this, &MainWindow::rebuildMicrophoneMenu);

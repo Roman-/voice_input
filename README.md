@@ -1,56 +1,102 @@
-# Roman's voice input
+# Voice Input Recorder
 
-Qt-based voice input app with MP3 encoding (LAME), PortAudio input, and automatic transcription using Groq's Whisper API.
+**macOS only** - Audio recording and transcription tool with global hotkey support.
 
-## ⚙️ Build Instructions
+## Installation
 
 ### Prerequisites
 
 ```bash
-sudo apt install cmake qtbase5-dev libportaudio2 libmp3lame-dev pkg-config
+# Install dependencies via Homebrew
+brew install qt portaudio lame cmake
 ```
 
-### Build Steps
+### Build
 
 ```bash
-mkdir build
+mkdir -p build
 cd build
-cmake -DCMAKE_BUILD_TYPE=Release ..
-make
+cmake ..
+make -j$(sysctl -n hw.ncpu)
 ```
 
-## 🧠 Environment Requirements
-
-Set your Groq API key (required for transcription):
+### Run
 
 ```bash
-export GROQ_API_KEY=your_key_here
+# Launch from terminal to see logs
+./build/romans_voice_input.app/Contents/MacOS/romans_voice_input
 ```
 
-## 🚀 Usage
+## Usage
 
-Run the application:
+### Starting/Stopping Recording
 
+- **Global Hotkey**: `Option+Space` to start/stop recording
+- **Signal**: `kill -SIGUSR1 <PID>` to trigger recording  
+- **Menu Bar**: System tray icon for microphone selection and controls
+
+### Window Visibility
+
+The application provides flexible window visibility control:
+
+- **"Always Show Window" checkbox** in the system tray menu (checked by default)
+  - When **checked**: Window is always visible in top-right corner, showing recording status and volume meter
+  - When **unchecked**: Window never appears, tray icon color provides visual feedback
+- Window accepts keyboard input when visible (press `Esc` to cancel recording)
+- Closing the window (clicking X) automatically unchecks "Always Show Window"
+- When not recording, window shows "Ready - waiting for signal" status
+- Tray icon color indicates state: grey (ready), red (recording), yellow (processing)
+
+### Recording Workflow
+
+1. Launch the application (window visible by default in top-right corner)
+2. Press `Option+Space` or send SIGUSR1 to start recording
+3. Speak your text (window shows volume meter if visible)
+4. Press `Option+Space` again to stop recording
+5. Wait for transcription (status updates shown if window visible)
+6. Transcribed text automatically pastes into the active application
+7. Window remains visible showing "Ready - waiting for signal"
+
+## Configuration
+
+Set environment variable for API key:
 ```bash
-./romans_voice_input
+export GROQ_API_KEY="your-api-key-here"
+# or
+export OPENAI_API_KEY="your-api-key-here"
 ```
 
-To start recording in the background and trigger via signal:
+Edit `src/config/config.h` to configure API endpoint, model, and audio settings.
 
-```bash
-kill -SIGUSR1 $(pidof romans_voice_input)
-```
+---
 
-To stop recording and transcribe, press `Enter` or `Space` in the window.
+## Implementation Details
 
-The results will be copied to the clipboard and the application will simulate pressing `Ctrl+V` to paste the transcription.
-Additionally, the the transcription will be saved to the output file.
+### Simplified Window Management
 
-## 📁 Output Files
+The application uses a **user-controlled visibility model** with no complex show/hide logic:
 
-| Path                                | Description                    |
-|-------------------------------------|--------------------------------|
-| `/tmp/voice_input_recording.mp3`    | Audio output file              |
-| `/tmp/voice_input_transcription.txt`| Transcription result           |
-| `/tmp/voice_input_status.txt`       | Current status indicator       |
-| `/tmp/voice_input_lock.pid`         | Lock file for singleton check  |
+**Key Implementation:**
+- Window flags: `Qt::Window | Qt::WindowStaysOnTopHint`
+- Single source of truth: `m_alwaysShowWindow` boolean controlled by tray menu checkbox
+- Window positioned once at startup (top-right corner), never repositioned
+- No `activateWindow()`, `raise()`, or focus manipulation calls
+- Window accepts keyboard input when visible (normal Qt behavior)
+
+**Window States:**
+- **Always Visible**: Window shows recording status, volume meter, and "Ready" state
+- **Always Hidden**: Recording works normally, tray icon provides visual feedback
+- Volume bar automatically hidden when not recording
+
+**Benefits:**
+- Simple, predictable behavior
+- User controls window visibility via tray menu
+- No focus stealing issues
+- Works reliably across macOS versions
+- Keyboard shortcuts (Esc) work when window is visible
+
+**Files Modified:**
+- `src/ui/mainwindow.h`: Added `m_showWindowAction` and `m_alwaysShowWindow`
+- `src/ui/mainwindow.cpp`: Removed all dynamic show/hide logic, simplified event handlers
+- `main.cpp`: Removed show() calls from signal handler
+

@@ -100,8 +100,10 @@ private:
     QMenu*          m_trayMenu;  // Context menu for tray icon
     QAction*        m_finishRecordingAction; // Action to finish recording from tray menu
     QAction*        m_cancelRecordingAction; // Action to cancel recording from tray menu
+    QAction*        m_showWindowAction; // Action to toggle window visibility from tray menu
     QMenu*          m_microphoneMenu;
     QActionGroup*   m_microphoneActionGroup;
+    bool            m_alwaysShowWindow; // Single source of truth for window visibility
     bool            m_isUploading; // Track if transcription is in uploading phase vs processing phase
     QElapsedTimer   m_uploadTimer;
     bool            m_uploadTimerActive{false};
