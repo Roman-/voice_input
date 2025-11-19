@@ -9,6 +9,7 @@
 #include <QSystemTrayIcon>
 #include <QMenu>
 #include <QElapsedTimer>
+#include <QColor>
 
 class QActionGroup;
 class AudioRecorder;
@@ -80,6 +81,14 @@ private:
     void updateTrayIcon(); // Update tray icon based on current state
     QIcon createTrayIcon(const QString& color); // Create programmatic icon with color
     void handleMicrophoneSelection(int deviceId);
+    void applyWindowBackground(const QColor& color);
+    enum class UiState {
+        Ready,
+        Recording,
+        Processing,
+        Error
+    };
+    void setWindowState(UiState state, bool force = false);
 
 private:
     AudioRecorder* m_recorder;
@@ -112,6 +121,7 @@ private:
     QElapsedTimer   m_finalStatusTimer;
     bool            m_finalStatusTimerActive{false};
     bool            m_uiStageMarked{false};
+    UiState         m_currentUiState{UiState::Ready};
 };
 
 #endif // MAINWINDOW_H

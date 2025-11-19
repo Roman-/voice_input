@@ -25,6 +25,7 @@
 #include "core/statusutils.h"
 #include "core/formatutils.h"
 #include "config/config.h"
+#include "ui/uicolors.h"
 
 #ifdef __APPLE__
 #include <Carbon/Carbon.h>
@@ -74,15 +75,6 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     setWindowFlags(Qt::Window | Qt::WindowStaysOnTopHint);
     setAutoFillBackground(true);
     
-    // Styled with visible border
-    setStyleSheet(
-        "QMainWindow {"
-        "    background-color: rgb(30, 30, 40);"
-        "    border: 2px solid rgb(92, 170, 255);"
-        "    border-radius: 8px;"
-        "}"
-    );
-    
     // Set initial position in top-right corner (only once)
     QScreen* screen = QApplication::primaryScreen();
     if (screen) {
@@ -94,7 +86,6 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     
     // Basic UI setup
     auto central = new QWidget(this);
-    central->setStyleSheet("background-color: rgb(30, 30, 40);");
     auto layout = new QVBoxLayout(central);
 
     // Configure all labels to be center-aligned
@@ -125,18 +116,8 @@ MainWindow::MainWindow(AudioRecorder* recorder, QWidget* parent)
     layout->addLayout(buttonLayout);
 
     setCentralWidget(central);
+    setWindowState(UiState::Ready, true);
 
-    // Set colors for dark mode initializing state
-    QPalette pal = palette();
-    pal.setColor(QPalette::Window, QColor(30, 30, 40));        // Dark blue-gray background
-    pal.setColor(QPalette::WindowText, QColor(220, 220, 220)); // Light gray text
-    pal.setColor(QPalette::Text, QColor(220, 220, 220));       // Light gray text for widgets
-    
-    // Apply palette to window and labels directly
-    setPalette(pal);
-    m_statusLabel->setPalette(pal);
-    m_transcriptionLabel->setPalette(pal);
-    
     // Set status text style to be bold and larger with distinctive color
     m_statusLabel->setStyleSheet(STYLE_STATUS_NEUTRAL);
     
@@ -248,10 +229,13 @@ void MainWindow::updateUI()
     } else {
         // Hide volume bar when not recording
         m_volumeBar->setVisible(false);
-        
-        // Show ready status when not recording
-        m_statusLabel->setText("Ready - waiting for signal");
-        m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #5CAAFF;");
+        bool isTranscribing = m_transcriptionService && m_transcriptionService->isTranscribing();
+        if (!isTranscribing) {
+            // Show ready status when not recording or processing
+            m_statusLabel->setText("Ready - waiting for signal");
+            m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #5CAAFF;");
+            setWindowState(UiState::Ready);
+        }
     }
 }
 
@@ -377,15 +361,7 @@ void MainWindow::onRecordingStopped()
     
     m_statusLabel->setText("Recording Stopped. File saved.");
     m_statusLabel->setStyleSheet(STYLE_STATUS_SUCCESS);
-    
-    // Change background to indicate recording has stopped
-    QPalette pal = palette();
-    pal.setColor(QPalette::Window, QColor(40, 40, 40));        // Dark gray for completed state
-    pal.setColor(QPalette::WindowText, QColor(200, 200, 200)); // Light gray text
-    pal.setColor(QPalette::Text, QColor(200, 200, 200));       // Light gray text for widgets
-    setPalette(pal);
-    m_statusLabel->setPalette(pal);
-    
+
     // Reset volume bar when recording stops
     updateVolumeBar(0.0f);
     
@@ -394,6 +370,7 @@ void MainWindow::onRecordingStopped()
     QString outputFilePath = m_recorder ? m_recorder->getOutputFilePath() : OUTPUT_FILE_PATH;
     QFile recordingFile(outputFilePath);
     if (recordingFile.exists() && m_hasApiKey) {
+        setWindowState(UiState::Processing);
         // Auto-start transcription
         m_transcriptionLabel->setText("Automatically starting transcription...");
         m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_NEUTRAL);
@@ -406,6 +383,7 @@ void MainWindow::onRecordingStopped()
         
         onTranscribeButtonClicked();
     } else if (!m_hasApiKey) {
+        setWindowState(UiState::Ready);
         m_transcriptionLabel->setText("NO API KEY - Transcription unavailable");
         m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_ERROR);
         
@@ -417,6 +395,7 @@ void MainWindow::onRecordingStopped()
             m_statusLabel->setText("Press Enter/Space to save and exit, or Esc to cancel");
         });
     } else if (isVisible()) {
+        setWindowState(UiState::Error);
         // Only show "Recording file not found" message if we're visible
         // This prevents showing error after cancellation and reopening
         m_transcriptionLabel->setText("Recording file not found");
@@ -444,6 +423,7 @@ void MainWindow::onRecordingStarted()
     
     // Set status to busy
     setFileStatus(STATUS_BUSY);
+    setWindowState(UiState::Recording);
 }
 
 void MainWindow::onAudioDeviceReady()
@@ -452,12 +432,7 @@ void MainWindow::onAudioDeviceReady()
     m_statusLabel->setText("Recording in progress... (Press Enter/Space to save, Esc to cancel)");
     m_statusLabel->setStyleSheet(STYLE_STATUS_SUCCESS);
     
-    // Change background to indicate active recording
-    QPalette pal = palette();
-    pal.setColor(QPalette::Window, QColor(25, 40, 25));        // Dark green for active recording
-    pal.setColor(QPalette::WindowText, QColor(220, 220, 220)); // Light gray text
-    pal.setColor(QPalette::Text, QColor(220, 220, 220));       // Light gray text for widgets
-    setPalette(pal);
+    setWindowState(UiState::Recording);
     
     qInfo() << "Audio device is fully initialized and recording has started";
 }
@@ -520,6 +495,7 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
         
         // Set status to ready (not idle)
         setFileStatus(STATUS_READY);
+        setWindowState(UiState::Ready);
         
         // Update UI
         m_statusLabel->setText("Recording canceled.");
@@ -653,6 +629,7 @@ void MainWindow::resetUIForNextRecording()
     // Reset UI state
     m_statusLabel->setText("Ready for next recording.");
     m_statusLabel->setStyleSheet("font-weight: bold; font-size: 12pt; color: #5CAAFF;");
+    setWindowState(UiState::Ready);
     
     // Reset exit code to default
     m_exitCode = APP_EXIT_FAILURE_GENERAL;
@@ -713,6 +690,7 @@ void MainWindow::onTranscribeButtonClicked()
     m_transcribeButton->setEnabled(false);
     m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_NEUTRAL);
     m_transcriptionLabel->setText("Starting transcription process...");
+    setWindowState(UiState::Processing);
     
     // Reset uploading flag - will be set to true when upload progress starts
     m_isUploading = false;
@@ -767,6 +745,7 @@ void MainWindow::onTranscriptionFailed(const QString& errorMessage)
 {
     // Reset uploading flag
     m_isUploading = false;
+    setWindowState(UiState::Error);
     
     // Set appropriate exit code based on the error
     if (errorMessage.contains("API key", Qt::CaseInsensitive) || 
@@ -855,6 +834,7 @@ void MainWindow::onTranscriptionProgress(const QString& status)
 {
     // Update UI with progress status
     m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_NEUTRAL);
+    setWindowState(UiState::Processing);
     
     // Track if we're in uploading phase (contains "Uploading") vs processing phase
     bool wasUploading = m_isUploading;
@@ -935,6 +915,7 @@ void MainWindow::onConversionStarted()
     // Update status label to show conversion in progress
     m_statusLabel->setText("Converting to MP3...");
     m_statusLabel->setStyleSheet(STYLE_STATUS_NEUTRAL);
+    setWindowState(UiState::Processing);
     
     // Update transcription label to show conversion status
     m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_NEUTRAL);
@@ -948,6 +929,7 @@ void MainWindow::onConversionCompleted(const QString& mp3Path)
     // Update status label
     m_statusLabel->setText("Conversion completed");
     m_statusLabel->setStyleSheet(STYLE_STATUS_SUCCESS);
+    setWindowState(UiState::Processing);
     
     // Update transcription label
     m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_NEUTRAL);
@@ -961,6 +943,7 @@ void MainWindow::onConversionFailed(const QString& errorMessage)
     // Update status label to show error
     m_statusLabel->setText("Conversion failed");
     m_statusLabel->setStyleSheet(STYLE_STATUS_ERROR);
+    setWindowState(UiState::Error);
     
     // Update transcription label with error message
     m_transcriptionLabel->setStyleSheet(STYLE_TRANSCRIPTION_ERROR);
@@ -1373,4 +1356,68 @@ QIcon MainWindow::createTrayIcon(const QString& color)
     painter.drawLine(16, 36, 28, 36);
     
     return QIcon(pixmap);
+}
+
+void MainWindow::applyWindowBackground(const QColor& color)
+{
+    const QString colorName = color.name(QColor::HexRgb);
+    
+    const QString windowStyle = QString(
+        "QMainWindow {"
+        "    background-color: %1;"
+        "    border: 2px solid rgb(92, 170, 255);"
+        "    border-radius: 8px;"
+        "}"
+    ).arg(colorName);
+    setStyleSheet(windowStyle);
+    
+    QPalette pal = palette();
+    pal.setColor(QPalette::Window, color);
+    pal.setColor(QPalette::Base, color);
+    pal.setColor(QPalette::AlternateBase, color);
+    pal.setColor(QPalette::Button, color);
+    pal.setColor(QPalette::WindowText, UiColors::TextPrimary);
+    pal.setColor(QPalette::Text, UiColors::TextPrimary);
+    setPalette(pal);
+    
+    if (QWidget* central = centralWidget()) {
+        central->setAutoFillBackground(true);
+        central->setStyleSheet(QString("background-color: %1;").arg(colorName));
+        central->setPalette(pal);
+    }
+    
+    if (m_statusLabel) {
+        m_statusLabel->setPalette(pal);
+    }
+    if (m_transcriptionLabel) {
+        m_transcriptionLabel->setPalette(pal);
+    }
+}
+
+void MainWindow::setWindowState(UiState state, bool force)
+{
+    if (!force && m_currentUiState == state) {
+        return;
+    }
+    
+    m_currentUiState = state;
+    
+    QColor background;
+    switch (state) {
+        case UiState::Recording:
+            background = UiColors::RecordingBackground;
+            break;
+        case UiState::Processing:
+            background = UiColors::ProcessingBackground;
+            break;
+        case UiState::Error:
+            background = UiColors::ErrorBackground;
+            break;
+        case UiState::Ready:
+        default:
+            background = UiColors::ReadyBackground;
+            break;
+    }
+    
+    applyWindowBackground(background);
 }
