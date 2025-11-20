@@ -31,6 +31,9 @@ public:
     
     // Get the current exit code
     int exitCode() const { return m_exitCode; }
+    
+    // Set the exit code (used by signal handlers)
+    void setExitCode(int code) { m_exitCode = code; }
 
 private slots:
     void updateUI();

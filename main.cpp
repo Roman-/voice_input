@@ -6,6 +6,8 @@
 #include <QTimer>
 #include <QProcess>
 #include <csignal>
+#include <mutex>
+#include <atomic>
 
 #include "config/config.h"
 #include "core/audiorecorder.h"
@@ -15,6 +17,44 @@
 // Global pointers for signal handling
 static AudioRecorder* g_audioRecorder = nullptr;
 static MainWindow* g_mainWindow = nullptr;
+static QApplication* g_app = nullptr;
+static std::atomic<bool> g_cleanupInProgress{false};
+static std::atomic<bool> g_exitRequested{false};
+
+namespace {
+
+void removeApplicationFiles()
+{
+    for (const auto& f : QStringList{OUTPUT_FILE_PATH,
+                                     TRANSCRIPTION_OUTPUT_PATH,
+                                     STATUS_FILE_PATH,
+                                     LOCK_FILE_PATH}) {
+        QFile file(f);
+        if (file.exists() && file.remove()) {
+            qDebug() << "Removed file:" << f;
+        }
+    }
+}
+
+void cleanupApplication(AudioRecorder* recorder, MainWindow* window)
+{
+    // Guard against multiple cleanup calls
+    bool expected = false;
+    if (!g_cleanupInProgress.compare_exchange_strong(expected, true)) {
+        return; // Cleanup already in progress
+    }
+    
+    if (recorder) {
+        recorder->stopRecording();
+    }
+    if (window) {
+        window->cancelTranscription();
+    }
+    removeApplicationFiles();
+    notifyI3Blocks();
+}
+
+} // namespace
 
 static void signalHandler(int sig)
 {
@@ -52,34 +92,39 @@ static void signalHandler(int sig)
     
     // Handle termination signals
     if (sig == SIGINT || sig == SIGTERM) {
-        if (g_audioRecorder) {
-            g_audioRecorder->stopRecording();
+        // Guard against multiple exit requests
+        bool expected = false;
+        if (!g_exitRequested.compare_exchange_strong(expected, true)) {
+            return; // Exit already requested
         }
         
-        // Cancel any transcription in progress
+        // Set exit code in MainWindow if available
         if (g_mainWindow) {
-            g_mainWindow->cancelTranscription();
+            g_mainWindow->setExitCode(APP_EXIT_FAILURE_CANCELED);
         }
         
-        // Remove application files
-        for (const auto& f : QStringList{OUTPUT_FILE_PATH, TRANSCRIPTION_OUTPUT_PATH, STATUS_FILE_PATH, LOCK_FILE_PATH}) {
-            QFile file(f);
-            if (file.exists() && file.remove()) {
-                qDebug() << "Removed file:" << f;
-            }
+        // Request quit - this is thread-safe and will be processed in main thread
+        if (g_app) {
+            // Use QTimer::singleShot to safely post exit to event loop
+            const int exitCode = APP_EXIT_FAILURE_CANCELED;
+            QTimer::singleShot(0, g_app, [exitCode]() {
+                cleanupApplication(g_audioRecorder, g_mainWindow);
+                if (g_app) {
+                    g_app->exit(exitCode);
+                }
+            });
+        } else {
+            // Fallback if app not initialized yet
+            cleanupApplication(g_audioRecorder, g_mainWindow);
+            exit(APP_EXIT_FAILURE_CANCELED);
         }
-        
-        notifyI3Blocks();
-        
-        // Use the canceled exit code for signal interruptions
-        qInfo() << "Setting application exit code to:" << APP_EXIT_FAILURE_CANCELED << "(CANCELED)";
-        exit(APP_EXIT_FAILURE_CANCELED);
     }
 }
 
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
+    g_app = &app; // Store app pointer for signal handler
     qSetMessagePattern("[%{time hh:mm:ss.zzz}] [%{type}] %{message}");
 
     qInfo() << "Application started";
@@ -179,22 +224,8 @@ int main(int argc, char *argv[])
     g_audioRecorder = &recorder; // For signalHandler access
 
     // Connect aboutToQuit for graceful cleanup
-    QObject::connect(&app, &QCoreApplication::aboutToQuit, [&](){
-        recorder.stopRecording();
-        
-        // Remove all application files
-        for (const auto& f : QStringList{OUTPUT_FILE_PATH, TRANSCRIPTION_OUTPUT_PATH, STATUS_FILE_PATH, LOCK_FILE_PATH}) {
-            QFile file(f);
-            if (file.exists() && file.remove()) {
-                qDebug() << "Removed file:" << f;
-            }
-        }
-        
-        // Set the application exit code based on MainWindow's exit code
-        if (g_mainWindow) {
-            qInfo() << "Setting application exit code to:" << g_mainWindow->exitCode();
-            app.exit(g_mainWindow->exitCode());
-        }
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, [&recorder](){
+        cleanupApplication(&recorder, g_mainWindow);
     });
     
     // Clean up any leftover files
@@ -232,5 +263,18 @@ int main(int argc, char *argv[])
     std::signal(SIGTERM, signalHandler);
     std::signal(SIGUSR1, signalHandler);
 
-    return app.exec();
+    const int appResult = app.exec();
+    const int finalExitCode = g_mainWindow ? g_mainWindow->exitCode() : appResult;
+    
+    // Only log exit code once at the end
+    if (finalExitCode == APP_EXIT_FAILURE_CANCELED) {
+        qInfo() << "Application exiting with code:" << finalExitCode << "(CANCELED)";
+    } else if (finalExitCode == APP_EXIT_SUCCESS) {
+        qInfo() << "Application exiting with code:" << finalExitCode << "(SUCCESS)";
+    } else {
+        qInfo() << "Application exiting with code:" << finalExitCode;
+    }
+    
+    return finalExitCode;
 }
+

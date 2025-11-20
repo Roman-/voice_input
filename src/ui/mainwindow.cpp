@@ -459,7 +459,6 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
         
         // Set exit code for cancellation
         m_exitCode = APP_EXIT_FAILURE_CANCELED;
-        qInfo() << "Exit code set to" << m_exitCode << "(CANCELED)";
         
         // Cancel recording (will skip MP3 conversion)
         m_recorder->cancelRecording();
@@ -514,10 +513,6 @@ void MainWindow::keyPressEvent(QKeyEvent* event)
         // Update tray icon to grey (ready state)
         updateTrayIcon();
         
-        // Hide the window
-        QTimer::singleShot(200, [this]() {
-            hide();
-        });
     }
     else if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter || event->key() == Qt::Key_Space) {
         // First check if transcription is in progress
@@ -715,7 +710,6 @@ void MainWindow::onTranscriptionCompleted(const QString& transcribedText)
     
     // Log the transcription result to console
     qInfo() << "Transcription result:\n-----\n" << transcribedText << "\n-----";
-    qInfo() << "Exit code set to" << m_exitCode << "(SUCCESS), hiding window immediately";
 
     // Set status to ready
     setFileStatus(STATUS_READY);
@@ -751,13 +745,10 @@ void MainWindow::onTranscriptionFailed(const QString& errorMessage)
     if (errorMessage.contains("API key", Qt::CaseInsensitive) || 
         errorMessage.contains("authentication", Qt::CaseInsensitive)) {
         m_exitCode = APP_EXIT_FAILURE_NO_API_KEY;
-        qWarning() << "Exit code set to" << m_exitCode << "(NO_API_KEY)";
     } else if (errorMessage.contains("Network error", Qt::CaseInsensitive)) {
         m_exitCode = APP_EXIT_FAILURE_API_ERROR;
-        qWarning() << "Exit code set to" << m_exitCode << "(API_ERROR)";
     } else {
         m_exitCode = APP_EXIT_FAILURE_GENERAL;
-        qWarning() << "Exit code set to" << m_exitCode << "(GENERAL_FAILURE)";
     }
     
     // Set status to error with the error message
@@ -1057,7 +1048,6 @@ void MainWindow::setupSystemTrayIcon()
             // Set exit code for cancellation
             // No show/hide manipulation
             m_exitCode = APP_EXIT_FAILURE_CANCELED;
-            qInfo() << "Exit code set to" << m_exitCode << "(CANCELED)";
             
             // Cancel recording (will skip MP3 conversion)
             m_recorder->cancelRecording();
